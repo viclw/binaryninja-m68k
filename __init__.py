@@ -966,7 +966,7 @@ class M68000(Architecture):
                 # absolute short
                 val = struct.unpack_from('>H', data, 0)[0]
                 if val & 0x8000:
-                    if self.address_size is 4:
+                    if self.address_size == 4:
                         val |= 0xffff0000 # extend to 32-bits
                     else:
                         val |= 0xff0000 # extend to 24-bits (for 68000)
