@@ -1848,8 +1848,8 @@ class M68000(Architecture):
             il.append(
                 dest.get_dest_il(il,
                     il.sub(size_bytes,
-                        source.get_source_il(il),
                         dest.get_source_il(il),
+                        source.get_source_il(il),
                         flags='*'
                     )
                 )
