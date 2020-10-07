@@ -901,8 +901,8 @@ class M68000(Architecture):
     }
     stack_pointer = 'sp'
     flags = ['x', 'n', 'z', 'v', 'c']
-    flag_write_types = ['', '*', 'nzvc']
-    flags_written_by_flag_write_types = {
+    flag_write_types = ['*', 'nzvc']
+    flags_written_by_flag_write_type = {
         '*': ['x', 'n', 'z', 'v', 'c'],
         'nzvc': ['n', 'z', 'v', 'c'],
     }
