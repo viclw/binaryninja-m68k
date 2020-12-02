@@ -1728,7 +1728,8 @@ class M68000(Architecture):
                 # TODO
                 style = (instruction >> 8) & 0x7
                 instr = 'bf'+BitfieldStyle[style]
-                length = 4
+                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_LONG)
+                length = 4+extra_dest
             else:
                 # shift/rotate
                 size = (instruction >> 6) & 3
@@ -1749,8 +1750,15 @@ class M68000(Architecture):
                     instr += 'r'
                 length = 2
         elif operation_code == 0xf:
-            if instruction & 0xff20 == 0xf420:
+            if instruction & 0xff20 == 0xf400:
+                instr = 'cinv'
+                length = 2
+            elif instruction & 0xff20 == 0xf420:
                 instr = 'cpush'
+                length = 2
+            elif instruction & 0xffe0 == 0xf500:
+                # MC68*040 variant
+                instr = 'pflush'
                 length = 2
             elif instruction & 0xff80 == 0xff80:
                 instruction = 'illFF'
@@ -2869,6 +2877,12 @@ class M68000(Architecture):
             # TODO
             il.append(il.unimplemented())
         elif instr == 'cpush':
+            # TODO
+            il.append(il.unimplemented())
+        elif instr == 'cinv':
+            # TODO
+            il.append(il.unimplemented())
+        elif instr == 'pflush':
             # TODO
             il.append(il.unimplemented())
         elif instr in ('bhi', 'bls', 'bcc', 'bcs', 'bne', 'beq', 'bvc', 'bvs',
