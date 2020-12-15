@@ -35,7 +35,7 @@ from binaryninja.binaryview import BinaryView
 from binaryninja.plugin import PluginCommand
 from binaryninja.interaction import AddressField, ChoiceField, get_form_input
 from binaryninja.types import Symbol
-from binaryninja.log import log_error
+from binaryninja.log import log_error, log_warn
 from binaryninja.enums import (Endianness, BranchType, InstructionTextTokenType,
         LowLevelILOperation, LowLevelILFlagCondition, FlagRole, SegmentFlag,
         ImplicitRegisterExtend, SymbolType)
@@ -160,6 +160,41 @@ SizeSuffix = [
     '.l', # SIZE_LONG
 ]
 
+FP_Registers = [
+    'fp0',
+    'fp1',
+    'fp2',
+    'fp3',
+    'fp4',
+    'fp5',
+    'fp6',
+    'fp7',
+]
+
+# FP data formats
+FP_SIZE_LONG = 0
+FP_SIZE_SINGLE_PRECISION = 1
+FP_SIZE_EXTENDED_PRECISION = 2
+FP_SIZE_PACKED = 3
+FP_SIZE_WORD = 4
+FP_SIZE_DOUBLE_PRECISION = 5
+FP_SIZE_BYTE = 6
+FP_SIZE_REG = 7  # not specified in H/W; for plugin convenience only
+
+FP_DataFormatSize = [4, 4, 12, 12, 2, 8, 1, 10]  # numeric representation size in bytes
+
+FP_SizeSuffix = [
+    '.l',  # FP_SIZE_LONG
+    '.s',  # FP_SIZE_SINGLE_PRECISION
+    '.x',  # FP_SIZE_EXTENDED_PRECISION
+    '.p',  # FP_SIZE_PACKED
+    '.w',  # FP_SIZE_WORD
+    '.d',  # FP_SIZE_DOUBLE_PRECISION
+    '.b',  # FP_SIZE_BYTE
+    '.x',  # FP_SIZE_REG
+]
+
+
 # Operands
 class OpRegisterDirect:
     def __init__(self, size, reg):
@@ -224,6 +259,41 @@ class OpRegisterDirect:
                 return il.set_reg(4, self.reg, value, flags)
             else:
                 return il.unimplemented()
+
+
+class FP_OpRegisterDirect(OpRegisterDirect):
+    def __init__(self, size, reg):
+        # FP registers are sign extended, so force the size to always be the full register length
+        if size != FP_SIZE_REG:
+            log_warn('Ignoring floating point register operand size request of: %d', size)
+
+        self.size = FP_SIZE_REG
+        self.reg = reg
+
+    def __repr__(self):
+        return "FP_OpRegisterDirect(%d, %s)" % (self.size, self.reg)
+
+    def format(self, addr):
+        # fp0
+        return [
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg)
+        ]
+
+    def get_pre_il(self, il):
+        return None
+
+    def get_post_il(self, il):
+        return None
+
+    def get_address_il(self, il):
+        return None
+
+    def get_source_il(self, il):
+        return il.reg(FP_DataFormatSize[self.size], self.reg)
+
+    def get_dest_il(self, il, value, flags=0):
+        return il.set_reg(FP_DataFormatSize[FP_SIZE_REG], self.reg,
+                          il.sign_extend(FP_DataFormatSize[FP_SIZE_REG], value), flags)
 
 
 class OpRegisterDirectPair:
@@ -831,6 +901,57 @@ class OpImmediate:
         return il.unimplemented()
 
 
+class FP_OpImmediate:
+    # The 'size' argument must be one of 'FP data formats'
+    # The 'value' argument must be in the appropriate form for the size as shown below:
+    #
+    #   size:                        value format:
+    #   FP_SIZE_SINGLE_PRECISION     IEEE 754
+    def __init__(self, size, value):
+        self.size = size
+
+        format_specifier = None
+        if size == FP_SIZE_SINGLE_PRECISION:
+            format_specifier = 'f'
+
+        # VLW TODO: Test behavior with unexpected format specifiers
+        if format_specifier is not None:
+            self.value = struct.unpack(format_specifier,
+                                       value.to_bytes(struct.calcsize(format_specifier),
+                                                      'little'))[0]
+        else:
+            self.value = float(value)
+
+    def __repr__(self):
+        return "FP_OpImmediate(%d, %f)" % (self.size, self.value)
+
+    def format(self, addr):
+        # #$2.5e+02
+        return [
+            # VLW TODO: This currently crashes Binary Ninja
+            InstructionTextToken(InstructionTextTokenType.TextToken, "#"),
+            InstructionTextToken(InstructionTextTokenType.FloatingPointToken,
+                                 "${:.1e}".format(self.value),
+                                 self.value,
+                                 FP_DataFormatSize[self.size])  # VLW TODO: What size goes here?
+        ]
+
+    def get_pre_il(self, il):
+        return None
+
+    def get_post_il(self, il):
+        return None
+
+    def get_address_il(self, il):
+        return None
+
+    def get_source_il(self, il):
+        return il.const(FP_DataFormatSize[self.size], self.value)  # VLW TODO: What size goes here?
+
+    def get_dest_il(self, il, value, flags=0):
+        return None
+
+
 # condition mapping to LLIL flag conditions
 ConditionMapping = {
     'hi': LowLevelILFlagCondition.LLFC_UGT,
@@ -887,6 +1008,18 @@ class M68000(Architecture):
         'caar':  RegisterInfo('caar', 4),
         'msp':   RegisterInfo('msp', 4),
         'isp':   RegisterInfo('isp', 4),
+        # MC68040
+        'fp0':   RegisterInfo('fp0', 10),
+        'fp1':   RegisterInfo('fp1', 10),
+        'fp2':   RegisterInfo('fp2', 10),
+        'fp3':   RegisterInfo('fp3', 10),
+        'fp4':   RegisterInfo('fp4', 10),
+        'fp5':   RegisterInfo('fp5', 10),
+        'fp6':   RegisterInfo('fp6', 10),
+        'fp7':   RegisterInfo('fp7', 10),
+        'fpcr':  RegisterInfo('fpcr', 2),
+        'fpsr':  RegisterInfo('fpsr', 4),
+        'fpiar': RegisterInfo('fpiar', 4),
         # MC68040/MC68LC040
         'tc':    RegisterInfo('tc', 4),
         'itt0':  RegisterInfo('itt0', 4),
@@ -936,6 +1069,29 @@ class M68000(Architecture):
     }
     memory_indirect = False
     movem_store_decremented = False
+
+    def fp_decode_effective_address(self, mode, register, data, size=None):
+
+        mode &= 0x07
+        register &= 0x07
+
+        if size == FP_SIZE_SINGLE_PRECISION:
+            if mode == 7:
+                if register == 4:
+                    return (FP_OpImmediate(size, struct.unpack_from('>l', data, 0)[0]), FP_DataFormatSize[size])
+
+        _size = None
+        if size == FP_SIZE_LONG:
+            _size = SIZE_LONG
+        elif size == FP_SIZE_WORD:
+            _size = SIZE_WORD
+        elif size == FP_SIZE_BYTE:
+            _size = SIZE_BYTE
+
+        if _size is not None:
+            return self.decode_effective_address(mode, register, data, _size)
+
+        return (None, None)
 
     def decode_effective_address(self, mode, register, data, size=None):
         mode &= 0x07
@@ -1729,7 +1885,9 @@ class M68000(Architecture):
                 style = (instruction >> 8) & 0x7
                 instr = 'bf'+BitfieldStyle[style]
                 dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_LONG)
-                length = 4+extra_dest
+                length = 4
+                if extra_dest is not None:
+                    length += extra_dest
             else:
                 # shift/rotate
                 size = (instruction >> 6) & 3
@@ -1750,7 +1908,40 @@ class M68000(Architecture):
                     instr += 'r'
                 length = 2
         elif operation_code == 0xf:
-            if instruction & 0xff20 == 0xf400:
+            # Check if this is a MC68040 floating point instruction (processor ID is 1)
+            if instruction & 0xfe00 == 0xf200:
+                fp_operation_code = (instruction >> 6) & 7
+                if fp_operation_code == 0:
+                    length = 4
+                    extra = struct.unpack_from('>H', data, 2)[0]
+                    sub_fp_operation_code = extra >> 13
+                    if sub_fp_operation_code & 5 == 0:
+                        destination_register = (extra >> 7) & 7
+                        source_specifier = (extra >> 10) & 7
+                        opmode = extra & 0x7f
+                        r_m = (extra >> 14) & 1
+                        if r_m == 0:
+                            size = FP_SIZE_REG
+                            source = FP_OpRegisterDirect(size, FP_Registers[source_specifier])
+                            dest = FP_OpRegisterDirect(size, FP_Registers[destination_register])
+                        else:
+                            if source_specifier == 7:
+                                # VLW TODO: Add support for 'fmovecr'
+                                pass
+                            else:
+                                size = source_specifier
+                                dest = FP_OpRegisterDirect(FP_SIZE_REG, FP_Registers[destination_register])
+                                source, extra_source = self.fp_decode_effective_address(instruction >> 3, instruction, data[4:], size)
+                                if extra_source is not None:
+                                    length += extra_source
+
+                        if (opmode >> 3) == 6:
+                            # VLW TODO: Add support for 'fsincos'
+                            pass
+                        elif (opmode & 0x3b) == 0:
+                            # fmove
+                            instr = 'fmove'
+            elif instruction & 0xff20 == 0xf400:
                 instr = 'cinv'
                 length = 2
             elif instruction & 0xff20 == 0xf420:
@@ -3220,8 +3411,11 @@ class M68000(Architecture):
         instr, length, size, source, dest, third = self.decode_instruction(data, addr)
 
         if size is not None:
-            # pylint: disable=invalid-sequence-index
-            instr += SizeSuffix[size]
+            if instr[0] == 'f':
+                instr += FP_SizeSuffix[size]
+            else:
+                # pylint: disable=invalid-sequence-index
+                instr += SizeSuffix[size]
 
         tokens = [InstructionTextToken(InstructionTextTokenType.InstructionToken, "%-10s" % instr)]
 
