@@ -182,7 +182,7 @@ class OpRegisterDirect:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         if self.reg == 'ccr':
@@ -197,30 +197,33 @@ class OpRegisterDirect:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'ccr':
-            return None
-        else:
-            # return il.set_reg(1 << self.size, self.reg, value)
-            # if self.size == SIZE_BYTE:
-            #     if self.reg[0] == 'a' or self.reg == 'sp':
-            #         return None
-            #     else:
-            #         return il.set_reg(1, self.reg+'.b', value, flags)
-            # elif self.size == SIZE_WORD:
-            #     return il.set_reg(2, self.reg+'.w', value, flags)
-            # else:
-            #     return il.set_reg(4, self.reg, value, flags)
-            if self.size == SIZE_BYTE:
-                if self.reg[0] == 'a' or self.reg == 'sp':
-                    return None
-                else:
-                    return il.set_reg(4, self.reg, il.or_expr(4, il.and_expr(4, il.const(4, 0xffffff00), il.reg(4, self.reg)), il.and_expr(4, il.const(4, 0xff), value)), flags)
-            elif self.size == SIZE_WORD:
-                if self.reg[0] == 'a' or self.reg == 'sp':
-                    return il.set_reg(4, self.reg, il.sign_extend(4, value), flags)
-                else:
-                    return il.set_reg(4, self.reg, il.or_expr(4, il.and_expr(4, il.const(4, 0xffff0000), il.reg(4, self.reg)), il.and_expr(4, il.const(4, 0xffff), value)), flags)
+            return il.unimplemented()
+
+        # return il.set_reg(1 << self.size, self.reg, value)
+        # if self.size == SIZE_BYTE:
+        #     if self.reg[0] == 'a' or self.reg == 'sp':
+        #         return None
+        #     else:
+        #         return il.set_reg(1, self.reg+'.b', value, flags)
+        # elif self.size == SIZE_WORD:
+        #     return il.set_reg(2, self.reg+'.w', value, flags)
+        # else:
+        #     return il.set_reg(4, self.reg, value, flags)
+        if self.size == SIZE_BYTE:
+            if self.reg[0] == 'a' or self.reg == 'sp':
+                return il.unimplemented()
             else:
+                return il.set_reg(4, self.reg, il.or_expr(4, il.and_expr(4, il.const(4, 0xffffff00), il.reg(4, self.reg)), il.and_expr(4, il.const(4, 0xff), value)), flags)
+        elif self.size == SIZE_WORD:
+            if self.reg[0] == 'a' or self.reg == 'sp':
+                return il.set_reg(4, self.reg, il.sign_extend(4, value), flags)
+            else:
+                return il.set_reg(4, self.reg, il.or_expr(4, il.and_expr(4, il.const(4, 0xffff0000), il.reg(4, self.reg)), il.and_expr(4, il.const(4, 0xffff), value)), flags)
+        else:
+            if value:
                 return il.set_reg(4, self.reg, value, flags)
+            else:
+                return il.unimplemented()
 
 
 class OpRegisterDirectPair:
@@ -247,7 +250,7 @@ class OpRegisterDirectPair:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return (il.reg(1 << self.size, self.reg1), il.reg(1 << self.size, self.reg2))
@@ -296,7 +299,7 @@ class OpRegisterMovemList:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return [il.reg(1 << self.size, reg) for reg in self.regs]
@@ -501,7 +504,7 @@ class OpRegisterIndirectDisplacement:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
-            return None
+            return il.unimplemented()
         else:
             #return il.store(1 << self.size, self.get_address_il(il), value, flags)
             return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
@@ -559,7 +562,7 @@ class OpRegisterIndirectIndex:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
-            return None
+            return il.unimplemented()
         else:
             #return il.store(1 << self.size, self.get_address_il(il), value, flags)
             return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
@@ -613,7 +616,7 @@ class OpMemoryIndirect:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
-            return None
+            return il.unimplemented()
         else:
             #return il.store(1 << self.size, self.get_address_il(il), value, flags)
             return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
@@ -683,7 +686,7 @@ class OpMemoryIndirectPostindex:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
-            return None
+            return il.unimplemented()
         else:
             #return il.store(1 << self.size, self.get_address_il(il), value, flags)
             return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
@@ -753,7 +756,7 @@ class OpMemoryIndirectPreindex:
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
-            return None
+            return il.unimplemented()
         else:
             #return il.store(1 << self.size, self.get_address_il(il), value, flags)
             return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
@@ -819,13 +822,13 @@ class OpImmediate:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return il.const(1 << self.size, self.value)
 
     def get_dest_il(self, il, value, flags=0):
-        return None
+        return il.unimplemented()
 
 
 # condition mapping to LLIL flag conditions
@@ -1051,7 +1054,7 @@ class M68000(Architecture):
         return (None, None)
 
     def decode_instruction(self, data, addr):
-        error_value = (None, None, None, None, None, None)
+        error_value = ('unimplemented', len(data), None, None, None, None)
         if len(data) < 2:
             return error_value
 
@@ -2702,13 +2705,14 @@ class M68000(Architecture):
                 dest.get_dest_il(il, il.reg(4, LLIL_TEMP(0)))
             )
         elif instr == 'ext':
-            reg = dest.reg
-            if dest.size == 1:
+            if not dest:
+                il.append(il.unimplemented())
+            elif dest.size == 1:
                 il.append(
                     il.set_reg(2,
-                        reg,
+                        dest.reg,
                         il.sign_extend(4,
-                            il.reg(1, reg),
+                            il.reg(1, dest.reg),
                             flags='nzvc'
                         )
                     )
@@ -2716,9 +2720,9 @@ class M68000(Architecture):
             else:
                 il.append(
                     il.set_reg(4,
-                        reg,
+                        dest.reg,
                         il.sign_extend(4,
-                            il.reg(2, reg),
+                            il.reg(2, dest.reg),
                             flags='nzvc'
                         )
                     )
@@ -3142,8 +3146,7 @@ class M68000(Architecture):
 
     def perform_get_instruction_info(self, data, addr):
         instr, length, _size, _source, dest, _third = self.decode_instruction(data, addr)
-
-        if instr is None:
+        if instr == 'unimplemented':
             return None
 
         result = InstructionInfo()
@@ -3202,9 +3205,6 @@ class M68000(Architecture):
     def perform_get_instruction_text(self, data, addr):
         instr, length, size, source, dest, third = self.decode_instruction(data, addr)
 
-        if instr is None:
-            return None
-
         if size is not None:
             # pylint: disable=invalid-sequence-index
             instr += SizeSuffix[size]
@@ -3229,15 +3229,12 @@ class M68000(Architecture):
     def perform_get_instruction_low_level_il(self, data, addr, il):
         instr, length, size, source, dest, third = self.decode_instruction(data, addr)
 
-        if instr is None:
-            return None
-
         if instr == 'movem':
             # movem overrides default predecrement/postincrement IL generation
 
             self.generate_instruction_il(il, instr, length, size, source, dest, third)
 
-        else:
+        elif instr is not None:
 
             # predecrement
             if source is not None:
@@ -3272,7 +3269,8 @@ class M68000(Architecture):
                 post_il = third.get_post_il(il)
                 if post_il is not None:
                     il.append(post_il)
-
+        else:
+            il.append(il.unimplemented())
         return length
 
     def perform_is_never_branch_patch_available(self, data, addr):
