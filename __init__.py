@@ -112,6 +112,45 @@ Condition = [
     'le'  # CONDITION_LESS_OR_EQUAL
 ]
 
+
+# Used by 'FBcc' and 'FScc' instructions
+FP_Condition = [
+    'f',     # 000000
+    'eq',    # 000001
+    'ogt',   # 000010
+    'oge',   # 000011
+    'olt',   # 000100
+    'ole',   # 000101
+    'ogl',   # 000110
+    'or',    # 000111
+    'un',    # 001000
+    'ueq',   # 001001
+    'ugt',   # 001010
+    'uge',   # 001011
+    'ult',   # 001100
+    'ule',   # 001101
+    'ne',    # 001110
+    't',     # 001111
+    'sf',    # 010000
+    'seq',   # 010001
+    'gt',    # 010010
+    'ge',    # 010011
+    'lt',    # 010100
+    'le',    # 010101
+    'gl',    # 010110
+    'gle',   # 010111
+    'ngle',  # 011000
+    'ngl',   # 011001
+    'nle',   # 011010
+    'nlt',   # 011011
+    'nge',   # 011100
+    'ngt',   # 011101
+    'sne',   # 011110
+    'st'     # 011111
+]
+
+FBcc_Instructions = tuple('fb'+x for x in FP_Condition)
+
 # Registers
 REGISTER_D0 = 0
 REGISTER_D1 = 1
@@ -149,17 +188,20 @@ Registers = [
     'sp'  # REGISTER_A7
 ]
 
-# Sizes
-SIZE_BYTE = 0
-SIZE_WORD = 1
-SIZE_LONG = 2
+# Integer data formats
+DATA_BYTE = 0
+DATA_WORD = 1
+DATA_LONG = 2
+
+ActualFormatSize = [1 << DATA_BYTE, 1 << DATA_WORD, 1 << DATA_LONG]  # actual size in bytes
 
 SizeSuffix = [
-    '.b', # SIZE_BYTE
-    '.w', # SIZE_WORD
-    '.l', # SIZE_LONG
+    '.b', # DATA_BYTE
+    '.w', # DATA_WORD
+    '.l', # DATA_LONG
 ]
 
+# FP registers
 FP_Registers = [
     'fp0',
     'fp1',
@@ -171,27 +213,42 @@ FP_Registers = [
     'fp7',
 ]
 
-# FP data formats
-FP_SIZE_LONG = 0
-FP_SIZE_SINGLE_PRECISION = 1
-FP_SIZE_EXTENDED_PRECISION = 2
-FP_SIZE_PACKED = 3
-FP_SIZE_WORD = 4
-FP_SIZE_DOUBLE_PRECISION = 5
-FP_SIZE_BYTE = 6
-FP_SIZE_REG = 7  # not specified in H/W; for plugin convenience only
+# NOTE: Defined by hardware don't change
+FP_SCREGISTER_FPIAR = 1
+FP_SCREGISTER_FPSR = 2
+FP_SCREGISTER_FPCR = 4
 
-FP_DataFormatSize = [4, 4, 12, 12, 2, 8, 1, 10]  # numeric representation size in bytes
+FP_SCRegisters = {
+    FP_SCREGISTER_FPIAR: 'fpiar',
+    FP_SCREGISTER_FPSR: 'fpsr',
+    FP_SCREGISTER_FPCR: 'fpcr'
+}
+
+# FP data formats
+FP_DATA_LONG = 0
+FP_DATA_SINGLE_PRECISION = 1
+FP_DATA_EXTENDED_PRECISION = 2
+FP_DATA_PACKED = 3
+FP_DATA_WORD = 4
+FP_DATA_DOUBLE_PRECISION = 5
+FP_DATA_BYTE = 6
+FP_DATA_PACKED_DYNAMIC_K = 7
+FP_DATA_REGISTER = 8  # not specified in H/W; for plugin convenience only
+FP_DATA_SCREGISTER = 9  # not specified in H/W; for plugin convenience only
+
+FP_ActualFormatSize = [4, 4, 12, 12, 2, 8, 1, 12, 10, 4]  # actual size in bytes
 
 FP_SizeSuffix = [
-    '.l',  # FP_SIZE_LONG
-    '.s',  # FP_SIZE_SINGLE_PRECISION
-    '.x',  # FP_SIZE_EXTENDED_PRECISION
-    '.p',  # FP_SIZE_PACKED
-    '.w',  # FP_SIZE_WORD
-    '.d',  # FP_SIZE_DOUBLE_PRECISION
-    '.b',  # FP_SIZE_BYTE
-    '.x',  # FP_SIZE_REG
+    '.l',  # FP_DATA_LONG
+    '.s',  # FP_DATA_SINGLE_PRECISION
+    '.x',  # FP_DATA_EXTENDED_PRECISION
+    '.p',  # FP_DATA_PACKED
+    '.w',  # FP_DATA_WORD
+    '.d',  # FP_DATA_DOUBLE_PRECISION
+    '.b',  # FP_DATA_BYTE
+    '.p',  # FP_DATA_PACKED_DYNAMIC_K
+    '.x',  # FP_DATA_REGISTER
+    '.l'   # FP_DATA_SCREGISTER
 ]
 
 
@@ -228,28 +285,28 @@ class OpRegisterDirect:
             x = il.flag_bit(1, 'x', 4)
             return il.or_expr(1, il.or_expr(1, il.or_expr(1, il.or_expr(1, c, v), z), n), x)
         else:
-            return il.reg(1 << self.size, self.reg)
+            return il.reg(self.size, self.reg)
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'ccr':
             return il.unimplemented()
 
-        # return il.set_reg(1 << self.size, self.reg, value)
-        # if self.size == SIZE_BYTE:
+        # return il.set_reg(self.size, self.reg, value)
+        # if self.size == ActualFormatSize[DATA_BYTE]:
         #     if self.reg[0] == 'a' or self.reg == 'sp':
         #         return None
         #     else:
         #         return il.set_reg(1, self.reg+'.b', value, flags)
-        # elif self.size == SIZE_WORD:
+        # elif self.size == ActualFormatSize[DATA_WORD]:
         #     return il.set_reg(2, self.reg+'.w', value, flags)
         # else:
         #     return il.set_reg(4, self.reg, value, flags)
-        if self.size == SIZE_BYTE:
+        if self.size == ActualFormatSize[DATA_BYTE]:
             if self.reg[0] == 'a' or self.reg == 'sp':
                 return il.unimplemented()
             else:
                 return il.set_reg(4, self.reg, il.or_expr(4, il.and_expr(4, il.const(4, 0xffffff00), il.reg(4, self.reg)), il.and_expr(4, il.const(4, 0xff), value)), flags)
-        elif self.size == SIZE_WORD:
+        elif self.size == ActualFormatSize[DATA_WORD]:
             if self.reg[0] == 'a' or self.reg == 'sp':
                 return il.set_reg(4, self.reg, il.sign_extend(4, value), flags)
             else:
@@ -262,12 +319,10 @@ class OpRegisterDirect:
 
 
 class FP_OpRegisterDirect(OpRegisterDirect):
-    def __init__(self, size, reg):
-        # FP registers are sign extended, so force the size to always be the full register length
-        if size != FP_SIZE_REG:
-            log_warn('Ignoring floating point register operand size request of: %d', size)
+    # TODO: Add support for fpcr/fpsr flags
 
-        self.size = FP_SIZE_REG
+    def __init__(self, size, reg):
+        self.size = size
         self.reg = reg
 
     def __repr__(self):
@@ -289,11 +344,15 @@ class FP_OpRegisterDirect(OpRegisterDirect):
         return None
 
     def get_source_il(self, il):
-        return il.reg(FP_DataFormatSize[self.size], self.reg)
+        return il.reg(self.size, self.reg)
 
     def get_dest_il(self, il, value, flags=0):
-        return il.set_reg(FP_DataFormatSize[FP_SIZE_REG], self.reg,
-                          il.sign_extend(FP_DataFormatSize[FP_SIZE_REG], value), flags)
+        if self.size == FP_ActualFormatSize[FP_DATA_REGISTER]:
+            # FP data registers are sign extended
+            return il.set_reg(self.size, self.reg, il.sign_extend(self.size, value), flags)
+        else:
+            # FP system control registers
+            return il.set_reg(self.size, self.reg, value, flags)
 
 
 class OpRegisterDirectPair:
@@ -323,10 +382,10 @@ class OpRegisterDirectPair:
         return il.unimplemented()
 
     def get_source_il(self, il):
-        return (il.reg(1 << self.size, self.reg1), il.reg(1 << self.size, self.reg2))
+        return (il.reg(self.size, self.reg1), il.reg(self.size, self.reg2))
 
     def get_dest_il(self, il, values, flags=0):
-        return (il.set_reg(1 << self.size, self.reg1, values[0], flags), il.set_reg(1 << self.size, self.reg2, values[1], flags))
+        return (il.set_reg(self.size, self.reg1, values[0], flags), il.set_reg(self.size, self.reg2, values[1], flags))
 
 
 class OpRegisterMovemList:
@@ -372,10 +431,109 @@ class OpRegisterMovemList:
         return il.unimplemented()
 
     def get_source_il(self, il):
-        return [il.reg(1 << self.size, reg) for reg in self.regs]
+        return [il.reg(self.size, reg) for reg in self.regs]
 
     def get_dest_il(self, il, values, flags=0):
-        return [il.set_reg(1 << self.size, reg, val, flags) for reg, val in zip(self.regs, values)]
+        return [il.set_reg(self.size, reg, val, flags) for reg, val in zip(self.regs, values)]
+
+
+class FP_OpRegisterMovemList:
+    def __init__(self, size, regs):
+        self.size = size
+        self.regs = regs
+
+    def __repr__(self):
+        return "FP_OpRegisterMovemList(%d, %s)" % (self.size, repr(self.regs))
+
+    def format(self, addr):
+        # fp0-fp7
+        if len(self.regs) == 0:
+            return []
+
+        # The move order varies per the m68k manual, for now use: fp0-fp7
+        # TODO: Observe the manual defined move order based on the addressing mode
+        tokens = []
+        last_reg = None
+        seq = False
+        for i in range(len(FP_Registers)):
+            if FP_Registers[i] in self.regs:
+                if last_reg is None:
+                    last_reg = i
+                    tokens.append(InstructionTextToken(
+                        InstructionTextTokenType.RegisterToken, FP_Registers[i]))
+                elif last_reg is i-1:
+                    seq = True
+                    last_reg = i
+                else:
+                    last_reg = i
+                    tokens.append(InstructionTextToken(
+                        InstructionTextTokenType.OperandSeparatorToken, "/"))
+                    tokens.append(InstructionTextToken(
+                        InstructionTextTokenType.RegisterToken, FP_Registers[i]))
+
+            if FP_Registers[i] not in self.regs or i == len(FP_Registers)-1:
+                if seq:
+                    seq = False
+                    tokens.append(InstructionTextToken(
+                        InstructionTextTokenType.OperandSeparatorToken, "-"))
+                    tokens.append(InstructionTextToken(
+                        InstructionTextTokenType.RegisterToken, FP_Registers[last_reg]))
+        return tokens
+
+    def get_pre_il(self, il):
+        return None
+
+    def get_post_il(self, il):
+        return None
+
+    def get_address_il(self, il):
+        return None
+
+    def get_source_il(self, il):
+        return [il.reg(self.size, reg) for reg in self.regs]
+
+    def get_dest_il(self, il, values, flags=0):
+        return [il.set_reg(self.size, reg, val, flags) for reg, val in zip(self.regs, values)]
+
+
+class FP_OpSCRegisterMovemList:
+    def __init__(self, size, regs):
+        self.size = size
+        self.regs = regs
+
+    def __repr__(self):
+        return "FP_OpSCRegisterMovemList(%d, %s)" % (self.size, repr(self.regs))
+
+    def format(self, addr):
+        # fpcr/fpsr/fpiar
+        if len(self.regs) == 0:
+            return []
+
+        # The move order is fixed per the m68k manual as: fpcr, fpsr, then fpiar
+        tokens = []
+        for i in sorted(FP_SCRegisters.keys(), reverse=True):
+            if FP_SCRegisters[i] in self.regs:
+                tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken,
+                                                   FP_SCRegisters[i]))
+                tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken,
+                                                   "/"))
+        tokens.pop()
+        return tokens
+
+    def get_pre_il(self, il):
+        return None
+
+    def get_post_il(self, il):
+        return None
+
+    def get_address_il(self, il):
+        return None
+
+    def get_source_il(self, il):
+        return [il.reg(self.size, reg) for reg in self.regs]
+
+    def get_dest_il(self, il, values, flags=0):
+        return [il.set_reg(self.size, reg, val, flags) for reg, val in zip(self.regs, values)]
 
 
 class OpRegisterIndirect:
@@ -404,11 +562,11 @@ class OpRegisterIndirect:
         return il.reg(4, self.reg)
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
-        #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+        #return il.store(self.size, self.get_address_il(il), value, flags)
+        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpRegisterIndirectPair:
@@ -442,11 +600,11 @@ class OpRegisterIndirectPair:
         return (il.reg(4, self.reg1), il.reg(4, self.reg2))
 
     def get_source_il(self, il):
-        return (il.load(1 << self.size, il.reg(4, self.reg1)), il.load(1 << self.size, il.reg(4, self.reg2)))
+        return (il.load(self.size, il.reg(4, self.reg1)), il.load(self.size, il.reg(4, self.reg2)))
 
     def get_dest_il(self, il, values, flags=0):
-        #return (il.store(1 << self.size, il.reg(4, self.reg1), values[0], flags), il.store(1 << self.size, il.reg(4, self.reg2), values[1], flags))
-        return (il.store(1 << self.size, il.reg(4, self.reg1), values[0]), il.store(1 << self.size, il.reg(4, self.reg2), values[1]))
+        #return (il.store(self.size, il.reg(4, self.reg1), values[0], flags), il.store(self.size, il.reg(4, self.reg2), values[1], flags))
+        return (il.store(self.size, il.reg(4, self.reg1), values[0]), il.store(self.size, il.reg(4, self.reg2), values[1]))
 
 
 class OpRegisterIndirectPostincrement:
@@ -474,7 +632,7 @@ class OpRegisterIndirectPostincrement:
             self.reg,
             il.add(4,
                 il.reg(4, self.reg),
-                il.const(4, 1 << self.size)
+                il.const(4, self.size)
             )
         )
 
@@ -482,11 +640,11 @@ class OpRegisterIndirectPostincrement:
         return il.reg(4, self.reg)
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
-        #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+        #return il.store(self.size, self.get_address_il(il), value, flags)
+        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpRegisterIndirectPredecrement:
@@ -511,7 +669,7 @@ class OpRegisterIndirectPredecrement:
             self.reg,
             il.sub(4,
                 il.reg(4, self.reg),
-                il.const(4, 1 << self.size)
+                il.const(4, self.size)
             )
         )
 
@@ -522,11 +680,11 @@ class OpRegisterIndirectPredecrement:
         return il.reg(4, self.reg)
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
-        #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+        #return il.store(self.size, self.get_address_il(il), value, flags)
+        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpRegisterIndirectDisplacement:
@@ -566,18 +724,18 @@ class OpRegisterIndirectDisplacement:
         else:
             return il.add(4,
                 il.reg(4, self.reg),
-                il.const(2, self.offset)
+                il.const(4, self.offset)
             )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
             return il.unimplemented()
         else:
-            #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+            #return il.store(self.size, self.get_address_il(il), value, flags)
+            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpRegisterIndirectIndex:
@@ -628,14 +786,14 @@ class OpRegisterIndirectIndex:
         )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
             return il.unimplemented()
         else:
-            #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+            #return il.store(self.size, self.get_address_il(il), value, flags)
+            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpMemoryIndirect:
@@ -646,7 +804,7 @@ class OpMemoryIndirect:
         self.outer_displacement = outer_displacement
 
     def __repr__(self):
-        return "OpRegisterIndirectIndex(%d, %s, %d, %d)" % (self.size, self.reg, self.offset, self.outer_displacement)
+        return "OpMemoryIndirect(%d, %s, %d, %d)" % (self.size, self.reg, self.offset, self.outer_displacement)
 
     def format(self, addr):
         # ([$1234,a0],$1234)
@@ -682,14 +840,14 @@ class OpMemoryIndirect:
         )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
             return il.unimplemented()
         else:
-            #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+            #return il.store(self.size, self.get_address_il(il), value, flags)
+            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpMemoryIndirectPostindex:
@@ -703,7 +861,7 @@ class OpMemoryIndirectPostindex:
         self.outer_displacement = outer_displacement
 
     def __repr__(self):
-        return "OpRegisterIndirectIndex(%d, %s, 0x%x, %s, %d, %d, 0x%x)" % (self.size, self.reg, self.offset, self.ireg, self.ireg_long, self.scale, self.outer_displacement)
+        return "OpMemoryIndirectPostindex(%d, %s, 0x%x, %s, %d, %d, 0x%x)" % (self.size, self.reg, self.offset, self.ireg, self.ireg_long, self.scale, self.outer_displacement)
 
     def format(self, addr):
         # ([$1234,a0],a1.l*4,$1234)
@@ -752,14 +910,14 @@ class OpMemoryIndirectPostindex:
         )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
             return il.unimplemented()
         else:
-            #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+            #return il.store(self.size, self.get_address_il(il), value, flags)
+            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpMemoryIndirectPreindex:
@@ -773,7 +931,7 @@ class OpMemoryIndirectPreindex:
         self.outer_displacement = outer_displacement
 
     def __repr__(self):
-        return "OpRegisterIndirectIndex(%d, %s, 0x%x, %s, %d, %d, 0x%x)" % (self.size, self.reg, self.offset, self.ireg, self.ireg_long, self.scale, self.outer_displacement)
+        return "OpMemoryIndirectPreindex(%d, %s, 0x%x, %s, %d, %d, 0x%x)" % (self.size, self.reg, self.offset, self.ireg, self.ireg_long, self.scale, self.outer_displacement)
 
     def format(self, addr):
         # ([$1234,a0,a1.l*4],$1234)
@@ -822,14 +980,14 @@ class OpMemoryIndirectPreindex:
         )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
         if self.reg == 'pc':
             return il.unimplemented()
         else:
-            #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+            #return il.store(self.size, self.get_address_il(il), value, flags)
+            return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpAbsolute:
@@ -862,11 +1020,11 @@ class OpAbsolute:
         )
 
     def get_source_il(self, il):
-        return il.load(1 << self.size, self.get_address_il(il))
+        return il.load(self.size, self.get_address_il(il))
 
     def get_dest_il(self, il, value, flags=0):
-        #return il.store(1 << self.size, self.get_address_il(il), value, flags)
-        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=1 << self.size, flags=flags)
+        #return il.store(self.size, self.get_address_il(il), value, flags)
+        return il.expr(LowLevelILOperation.LLIL_STORE, self.get_address_il(il).index, value.index, size=self.size, flags=flags)
 
 
 class OpImmediate:
@@ -881,8 +1039,8 @@ class OpImmediate:
         # #$1234
         return [
             InstructionTextToken(InstructionTextTokenType.TextToken, "#"),
-            #InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, "${:0{}x}".format(self.value, 1 << self.size), self.value, 1 << self.size)
-            InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:0{}x}".format(self.value, 1 << self.size), self.value, 1 << self.size)
+            #InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, "${:0{}x}".format(self.value, self.size), self.value, self.size)
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:0{}x}".format(self.value, self.size), self.value, self.size)
         ]
 
     def get_pre_il(self, il):
@@ -895,7 +1053,7 @@ class OpImmediate:
         return il.unimplemented()
 
     def get_source_il(self, il):
-        return il.const(1 << self.size, self.value)
+        return il.const(self.size, self.value)
 
     def get_dest_il(self, il, value, flags=0):
         return il.unimplemented()
@@ -903,37 +1061,46 @@ class OpImmediate:
 
 class FP_OpImmediate:
     # The 'size' argument must be one of 'FP data formats'
-    # The 'value' argument must be in the appropriate form for the size as shown below:
+    # The 'data' argument must be in the appropriate form for the size as shown below:
     #
-    #   size:                        value format:
-    #   FP_SIZE_SINGLE_PRECISION     IEEE 754
-    def __init__(self, size, value):
+    #   size:                        data format:
+    #   FP_DATA_SINGLE_PRECISION     IEEE 754
+    #   FP_DATA_DOUBLE_PRECISION     IEEE 754
+    #
+    def __init__(self, size, data):
         self.size = size
 
+        # TODO: Add proper support for extend and packed
         format_specifier = None
-        if size == FP_SIZE_SINGLE_PRECISION:
-            format_specifier = 'f'
-
-        # VLW TODO: Test behavior with unexpected format specifiers
-        if format_specifier is not None:
-            self.value = struct.unpack(format_specifier,
-                                       value.to_bytes(struct.calcsize(format_specifier),
-                                                      'little'))[0]
+        if self.size == FP_ActualFormatSize[FP_DATA_SINGLE_PRECISION]:
+            format_specifier = '>f'
+        elif self.size == FP_ActualFormatSize[FP_DATA_DOUBLE_PRECISION]:
+            format_specifier = '>d'
         else:
-            self.value = float(value)
+            format_specifier = '>Q'
+
+        value_unpacked = struct.unpack_from(format_specifier, data, 0)[0]
+
+        if format_specifier == '>Q':
+            self.value = value_unpacked
+            self.text = "${:x}".format(value_unpacked)
+        else:
+            self.value = int.from_bytes(data, byteorder='big')
+            self.text = "${:.4e}".format(value_unpacked)
 
     def __repr__(self):
-        return "FP_OpImmediate(%d, %f)" % (self.size, self.value)
+        return "FP_OpImmediate(%d, %x)" % (self.size, self.value)
 
     def format(self, addr):
         # #$2.5e+02
         return [
-            # VLW TODO: This currently crashes Binary Ninja
+            # Attempting to use a 'InstructionTextTokenType.FloatingPointToken' here currently
+            # crashes Binary Ninja
             InstructionTextToken(InstructionTextTokenType.TextToken, "#"),
-            InstructionTextToken(InstructionTextTokenType.FloatingPointToken,
-                                 "${:.1e}".format(self.value),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken,
+                                 self.text,
                                  self.value,
-                                 FP_DataFormatSize[self.size])  # VLW TODO: What size goes here?
+                                 self.size)
         ]
 
     def get_pre_il(self, il):
@@ -946,7 +1113,7 @@ class FP_OpImmediate:
         return None
 
     def get_source_il(self, il):
-        return il.const(FP_DataFormatSize[self.size], self.value)  # VLW TODO: What size goes here?
+        return il.const(self.size, self.value)
 
     def get_dest_il(self, il, value, flags=0):
         return None
@@ -1070,26 +1237,58 @@ class M68000(Architecture):
     memory_indirect = False
     movem_store_decremented = False
 
-    def fp_decode_effective_address(self, mode, register, data, size=None):
+    def fp_decode_effective_address(self, mode, register, data, size=None, fp_format=None):
 
         mode &= 0x07
         register &= 0x07
 
-        if size == FP_SIZE_SINGLE_PRECISION:
-            if mode == 7:
-                if register == 4:
-                    return (FP_OpImmediate(size, struct.unpack_from('>l', data, 0)[0]), FP_DataFormatSize[size])
+        if mode == 0:
+            # data register direct
+            # VLW TODO: Remove size check once variants are tested and approved
+            if size == FP_ActualFormatSize[FP_DATA_LONG]:
+                return self.decode_effective_address(mode, register, data, size)
+        if mode == 1:
+            # address register direct
+            # VLW TODO: Remove size check once variants are tested and approved
+            if size == FP_ActualFormatSize[FP_DATA_LONG]:
+                return self.decode_effective_address(mode, register, data, size)
+        elif mode == 2:
+            # address register indirect
+            # VLW TODO: Remove size check once variants are tested and approved
+            if size == FP_ActualFormatSize[FP_DATA_LONG] or \
+               size == FP_ActualFormatSize[FP_DATA_SINGLE_PRECISION]:
+                return self.decode_effective_address(mode, register, data, size)
+        elif mode == 3:
+            # address register indirect with postincrement
+            # VLW TODO: We shouldn't need to catch and call this explicitly
+            return self.decode_effective_address(mode, register, data, size)
+        elif mode == 4:
+            # address register indirect with predecrement
+            # VLW TODO: We shouldn't need to catch and call this explicitly
+            return self.decode_effective_address(mode, register, data, size)
+        elif mode == 5:
+            # address register indirect with displacement
+            # VLW TODO: We shouldn't need to catch and call this explicitly
+            return self.decode_effective_address(mode, register, data, size)
+        elif mode == 6:
+            # extended addressing mode
+            # VLW TODO: We shouldn't need to catch and call this explicitly
+            return self.decode_effective_address(mode, register, data, size)
+        elif mode == 7:
+            if register == 1:
+                # absolute long addressing
+                # VLW TODO: We shouldn't need to catch and call this explicitly
+                return self.decode_effective_address(mode, register, data, size)
+            if register == 4:
+                # immediates
+                if fp_format == FP_DATA_SINGLE_PRECISION or \
+                   fp_format == FP_DATA_DOUBLE_PRECISION:
+                    return (FP_OpImmediate(size, data), size)
+                elif size is not None and size <= ActualFormatSize[DATA_LONG]:
+                    return self.decode_effective_address(mode, register, data, size)
 
-        _size = None
-        if size == FP_SIZE_LONG:
-            _size = SIZE_LONG
-        elif size == FP_SIZE_WORD:
-            _size = SIZE_WORD
-        elif size == FP_SIZE_BYTE:
-            _size = SIZE_BYTE
-
-        if _size is not None:
-            return self.decode_effective_address(mode, register, data, _size)
+        # VLW DEBUG - Help identify unsupported instructions in the GUI
+        log_error('Unsupported instruction')
 
         return (None, None)
 
@@ -1144,13 +1343,13 @@ class M68000(Architecture):
                 if size == None:
                     # unspecified length
                     return (OpImmediate(size, None), None)
-                elif size == SIZE_BYTE:
+                elif size == ActualFormatSize[DATA_BYTE]:
                     # byte
                     return (OpImmediate(size, struct.unpack_from('>b', data, 1)[0]), 2)
-                elif size == 1:
+                elif size == ActualFormatSize[DATA_WORD]:
                     # word
                     return (OpImmediate(size, struct.unpack_from('>h', data, 0)[0]), 2)
-                elif size == 2:
+                elif size == ActualFormatSize[DATA_LONG]:
                     # long
                     return (OpImmediate(size, struct.unpack_from('>l', data, 0)[0]), 4)
 
@@ -1234,12 +1433,12 @@ class M68000(Architecture):
                 # rtm, callm, chk2, cmp2
                 if instruction & 0xfff0 == 0x06c0:
                     instr = 'rtm'
-                    dest = OpRegisterDirect(SIZE_LONG, Registers[instruction & 15])
+                    dest = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[instruction & 15])
                     length = 2
                 elif instruction & 0xffc0 == 0x06c0:
                     instr = 'callm'
-                    source = OpImmediate(SIZE_BYTE, struct.unpack_from('>B', data, 3)[0])
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_BYTE) # check
+                    source = OpImmediate(ActualFormatSize[DATA_BYTE], struct.unpack_from('>B', data, 3)[0])
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[DATA_BYTE]) # check
                     if extra_dest is None:
                         return error_value
                     length = 4+extra_dest
@@ -1250,8 +1449,8 @@ class M68000(Architecture):
                         instr = 'chk2'
                     else:
                         instr = 'cmp2'
-                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_BYTE) # check
-                    dest = OpRegisterDirect(size, Registers[(instruction >> 12) & 15])
+                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[DATA_BYTE]) # check
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 12) & 15])
                     if extra_source is None:
                         return error_value
                     length = 4+extra_source
@@ -1261,17 +1460,17 @@ class M68000(Architecture):
                     size = ((instruction >> 9) & 3) - 1
                     extra1 = struct.unpack_from('>H', data, 2)[0]
                     extra2 = struct.unpack_from('>H', data, 4)[0]
-                    source = OpRegisterDirectPair(size, Registers[extra1 & 7], Registers[extra2 & 7])
-                    dest = OpRegisterDirectPair(size, Registers[(extra1 >> 6) & 7], Registers[(extra2 >> 6) & 7])
-                    third = OpRegisterIndirectPair(size, Registers[(extra1 >> 12) & 15], Registers[(extra2 >> 12) & 15])
+                    source = OpRegisterDirectPair(ActualFormatSize[size], Registers[extra1 & 7], Registers[extra2 & 7])
+                    dest = OpRegisterDirectPair(ActualFormatSize[size], Registers[(extra1 >> 6) & 7], Registers[(extra2 >> 6) & 7])
+                    third = OpRegisterIndirectPair(ActualFormatSize[size], Registers[(extra1 >> 12) & 15], Registers[(extra2 >> 12) & 15])
                     length = 6
                 else:
                     instr = 'cas'
                     size = ((instruction >> 9) & 3) - 1
                     extra = struct.unpack_from('>H', data, 2)[0]
-                    source = OpRegisterDirect(size, Registers[extra & 7])
-                    dest = OpRegisterDirect(size, Registers[(extra >> 6) & 7])
-                    third, extra_third = self.decode_effective_address(instruction >> 3, instruction, data[4:], size)
+                    source = OpRegisterDirect(ActualFormatSize[size], Registers[extra & 7])
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(extra >> 6) & 7])
+                    third, extra_third = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[size])
                     if extra_third is None:
                         return error_value
                     length = 4+extra_third
@@ -1290,15 +1489,15 @@ class M68000(Architecture):
                 elif msb == 0x0c:
                     instr = 'cmpi'
                 size = (instruction >> 6) & 0x03
-                source, extra_source = self.decode_effective_address(7, 4, data[2:], size)
+                source, extra_source = self.decode_effective_address(7, 4, data[2:], ActualFormatSize[size])
                 if instruction & 0x00ff == 0x003c:
-                    dest = OpRegisterDirect(size, 'ccr')
+                    dest = OpRegisterDirect(ActualFormatSize[size], 'ccr')
                     extra_dest = 0
                 elif instruction & 0x00ff == 0x007c:
-                    dest = OpRegisterDirect(size, 'sr')
+                    dest = OpRegisterDirect(ActualFormatSize[size], 'sr')
                     extra_dest = 0
                 else:
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], size)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[size])
 
                 if dest is None:
                     instr = None
@@ -1314,10 +1513,10 @@ class M68000(Architecture):
                     instr = 'bclr'
                 elif instruction & 0xffc0 == 0x08C0:
                     instr = 'bset'
-                source = OpImmediate(SIZE_BYTE, struct.unpack_from('>B', data, 3)[0])
-                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_BYTE)
+                source = OpImmediate(ActualFormatSize[DATA_BYTE], struct.unpack_from('>B', data, 3)[0])
+                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[DATA_BYTE])
                 if isinstance(dest, OpRegisterDirect):
-                    dest.size = SIZE_LONG
+                    dest.size = DATA_LONG
                 if dest is None:
                     instr = None
                 else:
@@ -1327,8 +1526,8 @@ class M68000(Architecture):
                 if instruction & 0xf138 == 0x0108:
                     instr = 'movep'
                     size = ((instruction >> 6) & 1) + 1
-                    source, extra_source = self.decode_effective_address(5, instruction, data[2:], SIZE_BYTE) # check
-                    dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
+                    source, extra_source = self.decode_effective_address(5, instruction, data[2:], ActualFormatSize[DATA_BYTE]) # check
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
                     length = 2+extra_source
                     if instruction & 0x0080:
                         source, dest = dest, source
@@ -1341,10 +1540,10 @@ class M68000(Architecture):
                         instr = 'bclr'
                     elif instruction & 0xf1c0 == 0x01c0:
                         instr = 'bset'
-                    source = OpRegisterDirect(SIZE_BYTE, Registers[(instruction >> 9) & 7]) # check
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], SIZE_BYTE)
+                    source = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[(instruction >> 9) & 7]) # check
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[DATA_BYTE])
                     if isinstance(dest, OpRegisterDirect):
-                        dest.size = SIZE_LONG
+                        dest.size = DATA_LONG
                     if dest is None:
                         instr = None
                     else:
@@ -1353,8 +1552,8 @@ class M68000(Architecture):
                 instr = 'moves'
                 extra = struct.unpack_from('>H', data, 2)[0]
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[extra >> 12])
-                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[4:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[extra >> 12])
+                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[size])
                 if extra & 0x0800:
                     source, dest = dest, source
                 if extra_source is None:
@@ -1365,19 +1564,19 @@ class M68000(Architecture):
             instr = 'move'
             if operation_code == 0x1:
                 # Move byte
-                size = SIZE_BYTE
+                size = DATA_BYTE
             elif operation_code == 0x2:
                 # Move long
-                size = SIZE_LONG
+                size = DATA_LONG
             elif operation_code == 0x3:
                 # Move word
-                size = SIZE_WORD
+                size = DATA_WORD
 
-            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
             if source is None:
                 instr = None
             else:
-                dest, extra_dest = self.decode_effective_address(instruction >> 6, instruction >> 9, data[2+extra_source:], size)
+                dest, extra_dest = self.decode_effective_address(instruction >> 6, instruction >> 9, data[2+extra_source:], ActualFormatSize[size])
                 if dest is None or isinstance(dest, OpImmediate):
                     instr = None
                 else:
@@ -1395,24 +1594,24 @@ class M68000(Architecture):
                 if instruction & 0xf1c0 == 0x41c0:
                     if instruction & 0x0038:
                         instr = 'lea'
-                        dest = OpRegisterDirect(SIZE_LONG, Registers[((instruction >> 9) & 7) + 8])
+                        dest = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[((instruction >> 9) & 7) + 8])
                     else:
                         instr = 'extb'
-                    size = SIZE_LONG
+                    size = DATA_LONG
                 else:
                     instr = 'chk'
                     if instruction & 0x0080:
-                        size = SIZE_WORD
+                        size = DATA_WORD
                     else:
-                        size = SIZE_LONG
-                    dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
+                        size = DATA_LONG
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
             elif msb == 0x40:
                 # move from sr, negx
                 if instruction & 0xffc0 == 0x40c0:
                     # move from sr
                     instr = 'move'
-                    size = SIZE_WORD
-                    source = OpRegisterDirect(size, 'sr')
+                    size = DATA_WORD
+                    source = OpRegisterDirect(ActualFormatSize[size], 'sr')
                 else:
                     instr = 'negx'
                     size = instruction >> 6
@@ -1421,8 +1620,8 @@ class M68000(Architecture):
                 if instruction & 0xffc0 == 0x42c0:
                     # move to ccr
                     instr = 'move'
-                    size = SIZE_WORD
-                    source = OpRegisterDirect(size, 'ccr')
+                    size = DATA_WORD
+                    source = OpRegisterDirect(ActualFormatSize[size], 'ccr')
                 else:
                     instr = 'clr'
                     size = instruction >> 6
@@ -1431,8 +1630,8 @@ class M68000(Architecture):
                 if instruction & 0xffc0 == 0x44c0:
                     # move from ccr
                     instr = 'move'
-                    size = SIZE_WORD
-                    dest = OpRegisterDirect(size, 'ccr')
+                    size = DATA_WORD
+                    dest = OpRegisterDirect(ActualFormatSize[size], 'ccr')
                 else:
                     instr = 'neg'
                     size = instruction >> 6
@@ -1441,8 +1640,8 @@ class M68000(Architecture):
                 if instruction & 0xffc0 == 0x46c0:
                     # move from sr
                     instr = 'move'
-                    size = SIZE_WORD
-                    dest = OpRegisterDirect(size, 'sr')
+                    size = DATA_WORD
+                    dest = OpRegisterDirect(ActualFormatSize[size], 'sr')
                 else:
                     instr = 'not'
                     size = instruction >> 6
@@ -1450,17 +1649,17 @@ class M68000(Architecture):
                 # link, nbcd, movem, ext, swap, bkpt, pea, divs, divu, divsl, divul, muls, mulu
                 if instruction & 0xfff8 == 0x4808:
                     instr = 'link'
-                    size = SIZE_LONG
-                    dest, extra_dest = self.decode_effective_address(7, 4, data[2:], size)
+                    size = DATA_LONG
+                    dest, extra_dest = self.decode_effective_address(7, 4, data[2:], ActualFormatSize[size])
                 elif instruction & 0xffc0 == 0x4800:
                     instr = 'nbcd'
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], SIZE_BYTE)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[DATA_BYTE])
                     skip_ea = True
                 elif instruction & 0xfb80 == 0x4880:
                     if instruction & 0x0040:
-                        size = SIZE_LONG
+                        size = DATA_LONG
                     else:
-                        size = SIZE_WORD
+                        size = DATA_WORD
                     if instruction & 0x0038:
                         instr = 'movem'
                         extra_source = 2
@@ -1474,41 +1673,41 @@ class M68000(Architecture):
                             for k in range(16):
                                 if extra >> k & 0x0001:
                                     reg_list.append(Registers[k])
-                        source = OpRegisterMovemList(size, reg_list)
+                        source = OpRegisterMovemList(ActualFormatSize[size], reg_list)
                     else:
                         instr = 'ext'
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], size)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[size])
                     skip_ea = True
                     if instruction & 0x0400:
                         source, dest = dest, source
                 elif instruction & 0xfff8 == 0x4840:
                     instr = 'swap'
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], SIZE_LONG)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[DATA_LONG])
                     skip_ea = True
                 elif instruction & 0xfff8 == 0x4848:
                     instr = 'bkpt'
-                    source = OpImmediate(SIZE_BYTE, instruction & 7)
+                    source = OpImmediate(ActualFormatSize[DATA_BYTE], instruction & 7)
                     skip_ea = True
                 elif instruction & 0xffc0 == 0x4840:
                     instr = 'pea'
-                    size = SIZE_LONG
+                    size = DATA_LONG
                 elif msb == 0x4c:
-                    size = SIZE_LONG
+                    size = DATA_LONG
                     extra_dest = 2
                     extra = struct.unpack_from('>H', data, 2)[0]
-                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_dest:], size)
+                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_dest:], ActualFormatSize[size])
                     dh = Registers[extra & 7]
                     dl = Registers[(extra >> 12) & 7]
-                    dest = OpRegisterDirect(size, dl)
+                    dest = OpRegisterDirect(ActualFormatSize[size], dl)
                     if instruction & 0x0040:
                         if extra & 0x0800:
                             instr = 'divs'
                         else:
                             instr = 'divu'
                         if extra & 0x0400:
-                            dest = OpRegisterDirectPair(size, dh, dl)
+                            dest = OpRegisterDirectPair(ActualFormatSize[size], dh, dl)
                         elif dh != dl:
-                            dest = OpRegisterDirectPair(size, dh, dl)
+                            dest = OpRegisterDirectPair(ActualFormatSize[size], dh, dl)
                             instr += 'l'
                     else:
                         if extra & 0x0800:
@@ -1516,7 +1715,7 @@ class M68000(Architecture):
                         else:
                             instr = 'mulu'
                         if extra & 0x0400:
-                            dest = OpRegisterDirectPair(size, dh, dl)
+                            dest = OpRegisterDirectPair(ActualFormatSize[size], dh, dl)
                     skip_ea = True
             elif msb == 0x4a:
                 # bgnd, illegal, tas, tst
@@ -1529,7 +1728,7 @@ class M68000(Architecture):
                 elif instruction & 0xffc0 == 0x4ac0:
                     instr = 'tas'
                     skip_ea = True
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], SIZE_BYTE)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[DATA_BYTE])
                 else:
                     instr = 'tst'
                     size = instruction >> 6
@@ -1538,21 +1737,21 @@ class M68000(Architecture):
                 if instruction & 0xfff0 == 0x4e40:
                     instr = 'trap'
                     length = 2
-                    source = OpImmediate(SIZE_BYTE, instruction & 15)
+                    source = OpImmediate(ActualFormatSize[DATA_BYTE], instruction & 15)
                     skip_ea = True
                 elif instruction & 0xfff0 == 0x4e50:
                     if instruction & 0xfff8 == 0x4e50:
                         instr = 'link'
-                        dest, extra_dest = self.decode_effective_address(7, 4, data[2:], 1)
+                        dest, extra_dest = self.decode_effective_address(7, 4, data[2:], ActualFormatSize[DATA_WORD])
                     else:
                         instr = 'unlk'
-                    source = OpRegisterDirect(SIZE_LONG, Registers[(instruction & 7) + 8])
+                    source = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[(instruction & 7) + 8])
                     skip_ea = True
                 elif instruction & 0xfff0 == 0x4e60:
                     instr = 'move'
-                    size = SIZE_LONG
-                    source = OpRegisterDirect(SIZE_LONG, Registers[(instruction & 7) + 8])
-                    dest = OpRegisterDirect(size, 'usp')
+                    size = DATA_LONG
+                    source = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[(instruction & 7) + 8])
+                    dest = OpRegisterDirect(ActualFormatSize[size], 'usp')
                     if instruction & 0x08:
                         source, dest = dest, source
                     skip_ea = True
@@ -1564,7 +1763,7 @@ class M68000(Architecture):
                     skip_ea = True
                 elif instruction == 0x4e72:
                     instr = 'stop'
-                    source = OpImmediate(SIZE_WORD, struct.unpack_from(">H", data, 2)[0])
+                    source = OpImmediate(ActualFormatSize[DATA_WORD], struct.unpack_from(">H", data, 2)[0])
                     extra_source = 2
                     skip_ea = True
                 elif instruction == 0x4e73:
@@ -1572,7 +1771,7 @@ class M68000(Architecture):
                     skip_ea = True
                 elif instruction == 0x4e74:
                     instr = 'rtd'
-                    dest, extra_dest = self.decode_effective_address(7, 4, data[2:], SIZE_WORD)
+                    dest, extra_dest = self.decode_effective_address(7, 4, data[2:], ActualFormatSize[DATA_WORD])
                     skip_ea = True
                 elif instruction == 0x4e75:
                     instr = 'rts'
@@ -1585,15 +1784,15 @@ class M68000(Architecture):
                     skip_ea = True
                 elif instruction & 0xfffe == 0x4e7A:
                     instr = 'movec'
-                    size = SIZE_LONG
+                    size = DATA_LONG
                     extended = struct.unpack_from('>H', data, 2)[0]
                     control_reg = self.control_registers.get(extended & 0x0fff, None)
                     reg = (extended >> 12) & 15
                     if control_reg is None:
                         instr = None
                     else:
-                        source = OpRegisterDirect(size, control_reg)
-                        dest = OpRegisterDirect(size, Registers[reg])
+                        source = OpRegisterDirect(ActualFormatSize[size], control_reg)
+                        dest = OpRegisterDirect(ActualFormatSize[size], Registers[reg])
                         if instruction & 1:
                             source, dest = dest, source
                     extra_source = 2
@@ -1603,7 +1802,7 @@ class M68000(Architecture):
                         instr = 'jsr'
                     else:
                         instr = 'jmp'
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], SIZE_LONG)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[DATA_LONG])
                     skip_ea = True
             if instr is not None:
                 if size is not None:
@@ -1611,9 +1810,9 @@ class M68000(Architecture):
                 if skip_ea:
                     pass
                 elif dest is None:
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], size)
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_source:], ActualFormatSize[size])
                 else:
-                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_dest:], size)
+                    source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2+extra_dest:], ActualFormatSize[size])
                 if extra_source is None or extra_dest is None:
                     instr = None
                 else:
@@ -1623,23 +1822,23 @@ class M68000(Architecture):
             if instruction & 0xf0c0 == 0x50c0:
                 if instruction & 0xf0f8 == 0x50c8:
                     instr = 'db'+Condition[(instruction >> 8) & 0xf]
-                    source = OpRegisterDirect(SIZE_WORD, Registers[instruction & 7])
-                    dest = OpRegisterIndirectDisplacement(SIZE_LONG, 'pc', struct.unpack_from('>h', data, 2)[0])
+                    source = OpRegisterDirect(ActualFormatSize[DATA_WORD], Registers[instruction & 7])
+                    dest = OpRegisterIndirectDisplacement(ActualFormatSize[DATA_LONG], 'pc', struct.unpack_from('>h', data, 2)[0])
                     length = 4
                 elif instruction & 0xf0ff in (0x50fa, 0x50fb, 0x50fc):
                     instr = 'trap'+Condition[(instruction >> 8) & 0xf]
                     if instruction & 7 == 2:
                         length = 4
-                        source = OpImmediate(SIZE_WORD, struct.unpack_from('>H', data, 2)[0])
+                        source = OpImmediate(ActualFormatSize[DATA_WORD], struct.unpack_from('>H', data, 2)[0])
                     elif instruction & 7 == 3:
                         length = 6
-                        source = OpImmediate(SIZE_LONG, struct.unpack_from('>L', data, 2)[0])
+                        source = OpImmediate(ActualFormatSize[DATA_LONG], struct.unpack_from('>L', data, 2)[0])
                     elif instruction & 7 == 4:
                         length = 2
                 else:
                     instr = 's'+Condition[(instruction >> 8) & 0xf]
-                    size = SIZE_BYTE
-                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                    size = DATA_BYTE
+                    dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                     if extra_dest is None:
                         return error_value
                     length = 2+extra_dest
@@ -1652,8 +1851,8 @@ class M68000(Architecture):
                 if val == 0:
                     val = 8
                 size = (instruction >> 6) & 3
-                source = OpImmediate(SIZE_BYTE, val)
-                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                source = OpImmediate(ActualFormatSize[DATA_BYTE], val)
+                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                 if extra_dest is None:
                     return error_value
                 length = 2+extra_dest
@@ -1676,16 +1875,16 @@ class M68000(Architecture):
                 if val & 0x80:
                     val -= 256
                 length = 2
-            dest = OpRegisterIndirectDisplacement(SIZE_LONG, 'pc', val)
+            dest = OpRegisterIndirectDisplacement(ActualFormatSize[DATA_LONG], 'pc', val)
         elif operation_code == 0x7:
             # MOVEQ
             instr = 'moveq'
-            size = SIZE_LONG
+            size = DATA_LONG
             val = instruction & 0xff
             if val & 0x80:
                 val |= 0xffffff00
-            source = OpImmediate(size, val)
-            dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
+            source = OpImmediate(ActualFormatSize[size], val)
+            dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
             length = 2
         elif operation_code == 0x8:
             # OR/DIV/SBCD
@@ -1694,45 +1893,45 @@ class M68000(Architecture):
                     instr = 'divs'
                 else:
                     instr = 'divu'
-                size = SIZE_WORD
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                size = DATA_WORD
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                 if extra_source is None:
                     return error_value
                 length = 2+extra_source
             elif instruction & 0xf1f0 == 0x8100:
                 instr = 'sbcd'
                 length = 2
-                dest = OpRegisterDirect(SIZE_BYTE, Registers[(instruction >> 9) & 7])
-                source = OpRegisterDirect(SIZE_BYTE, Registers[instruction & 7])
+                dest = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[(instruction >> 9) & 7])
+                source = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[instruction & 7])
                 if instruction & 8:
-                    dest = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[((instruction >> 9) & 7) + 8])
-                    source = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[(instruction & 7) + 8])
+                    dest = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[((instruction >> 9) & 7) + 8])
+                    source = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[(instruction & 7) + 8])
             elif instruction & 0xf130 == 0x8100:
                 if instruction & 0x0040:
                     instr = 'pack'
                     if instruction & 8:
-                        dest = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[((instruction >> 9) & 7) + 8])
-                        source = OpRegisterIndirectPredecrement(SIZE_WORD, Registers[(instruction & 7) + 8])
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[((instruction >> 9) & 7) + 8])
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_WORD], Registers[(instruction & 7) + 8])
                     else:
-                        dest = OpRegisterDirect(SIZE_BYTE, Registers[(instruction >> 9) & 7])
-                        source = OpRegisterDirect(SIZE_WORD, Registers[instruction & 7])
+                        dest = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[(instruction >> 9) & 7])
+                        source = OpRegisterDirect(ActualFormatSize[DATA_WORD], Registers[instruction & 7])
                 else:
                     instr = 'unpk'
                     if instruction & 8:
-                        dest = OpRegisterIndirectPredecrement(SIZE_WORD, Registers[((instruction >> 9) & 7) + 8])
-                        source = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[(instruction & 7) + 8])
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_WORD], Registers[((instruction >> 9) & 7) + 8])
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[(instruction & 7) + 8])
                     else:
-                        dest = OpRegisterDirect(SIZE_WORD, Registers[(instruction >> 9) & 7])
-                        source = OpRegisterDirect(SIZE_BYTE, Registers[instruction & 7])
+                        dest = OpRegisterDirect(ActualFormatSize[DATA_WORD], Registers[(instruction >> 9) & 7])
+                        source = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[instruction & 7])
                 length = 4
-                third = OpImmediate(SIZE_WORD, struct.unpack_from(">H", data, 2)[0])
+                third = OpImmediate(ActualFormatSize[DATA_WORD], struct.unpack_from(">H", data, 2)[0])
             else:
                 instr = 'or'
                 opmode = (instruction >> 6) & 0x7
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                 if opmode & 4:
                     source, dest = dest, source
                 if extra_source is None:
@@ -1745,20 +1944,20 @@ class M68000(Architecture):
             if opmode in (0x03, 0x07):
                 instr = 'suba'
                 if opmode == 0x03:
-                    size = SIZE_WORD
+                    size = DATA_WORD
                 else:
-                    size = SIZE_LONG
-                dest = OpRegisterDirect(SIZE_LONG, Registers[((instruction >> 9) & 7) + 8])
+                    size = DATA_LONG
+                dest = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[((instruction >> 9) & 7) + 8])
             else:
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
             if instr == 'sub' and opmode & 4:
                 if isinstance(source, OpRegisterDirect):
                     instr = 'subx'
                     if source.reg[0] == 'a' or source.reg == 'sp':
-                        source = OpRegisterIndirectPredecrement(size, source.reg)
-                        dest = OpRegisterIndirectPredecrement(size, dest.reg)
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[size], source.reg)
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[size], dest.reg)
                 else:
                     source, dest = dest, source
             if extra_source is None:
@@ -1774,19 +1973,19 @@ class M68000(Architecture):
             if opmode in (0x03, 0x07):
                 instr = 'cmpa'
                 if opmode == 0x03:
-                    size = SIZE_WORD
+                    size = DATA_WORD
                 else:
-                    size = SIZE_LONG
-                dest = OpRegisterDirect(size, Registers[((instruction >> 9) & 7) + 8])
+                    size = DATA_LONG
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[((instruction >> 9) & 7) + 8])
             else:
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
             if instr == 'cmp' and opmode & 4:
                 if instruction & 0x0038 == 0x0008:
                     instr = 'cmpm'
-                    source = OpRegisterIndirectPostincrement(size, Registers[instruction & 15])
-                    dest = OpRegisterIndirectPostincrement(size, Registers[((instruction >> 9) & 7) + 8])
+                    source = OpRegisterIndirectPostincrement(ActualFormatSize[size], Registers[instruction & 15])
+                    dest = OpRegisterIndirectPostincrement(ActualFormatSize[size], Registers[((instruction >> 9) & 7) + 8])
                 else:
                     source, dest = dest, source
                     instr = 'eor'
@@ -1800,9 +1999,9 @@ class M68000(Architecture):
                     instr = 'muls'
                 else:
                     instr = 'mulu'
-                size = SIZE_WORD
-                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
+                size = DATA_WORD
+                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
                 if extra_source is None:
                     return error_value
                 length = 2+extra_source
@@ -1810,28 +2009,28 @@ class M68000(Architecture):
                 if instruction & 0xf1f0 == 0xc100:
                     instr = 'abcd'
                     if instruction & 0x0008:
-                        source = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[(instruction & 7) + 8])
-                        dest = OpRegisterIndirectPredecrement(SIZE_BYTE, Registers[((instruction >> 9) & 7) + 8])
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[(instruction & 7) + 8])
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[DATA_BYTE], Registers[((instruction >> 9) & 7) + 8])
                     else:
-                        source = OpRegisterDirect(SIZE_BYTE, Registers[instruction & 7])
-                        dest = OpRegisterDirect(SIZE_BYTE, Registers[(instruction >> 9) & 7])
+                        source = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[instruction & 7])
+                        dest = OpRegisterDirect(ActualFormatSize[DATA_BYTE], Registers[(instruction >> 9) & 7])
                 else:
                     instr = 'exg'
-                    size = SIZE_LONG
-                    source = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-                    dest = OpRegisterDirect(size, Registers[instruction & 7])
+                    size = DATA_LONG
+                    source = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[instruction & 7])
                     if instruction & 0xf1f8 == 0xc148:
-                        source = OpRegisterIndirectPredecrement(size, Registers[((instruction >> 9) & 7) + 8])
-                        dest = OpRegisterIndirectPredecrement(size, Registers[(instruction & 7) + 8])
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[size], Registers[((instruction >> 9) & 7) + 8])
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[size], Registers[(instruction & 7) + 8])
                     if instruction & 0xf1f8 == 0xc188:
-                        dest = OpRegisterIndirectPredecrement(size, Registers[(instruction & 7) + 8])
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[size], Registers[(instruction & 7) + 8])
                 length = 2
             else:
                 instr = 'and'
                 opmode = (instruction >> 6) & 0x7
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+                source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                 if opmode & 4:
                     source, dest = dest, source
                 if extra_source is None:
@@ -1844,20 +2043,20 @@ class M68000(Architecture):
             if opmode in (0x03, 0x07):
                 instr = 'adda'
                 if opmode == 0x03:
-                    size = SIZE_WORD
+                    size = DATA_WORD
                 else:
-                    size = SIZE_LONG
-                dest = OpRegisterDirect(SIZE_LONG, Registers[((instruction >> 9) & 7) + 8])
+                    size = DATA_LONG
+                dest = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[((instruction >> 9) & 7) + 8])
             else:
                 size = (instruction >> 6) & 3
-                dest = OpRegisterDirect(size, Registers[(instruction >> 9) & 7])
-            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 9) & 7])
+            source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
             if instr == 'add' and opmode & 4:
                 if isinstance(source, OpRegisterDirect):
                     instr = 'addx'
                     if source.reg[0] == 'a' or source.reg == 'sp':
-                        source = OpRegisterIndirectPredecrement(size, source.reg)
-                        dest = OpRegisterIndirectPredecrement(size, dest.reg)
+                        source = OpRegisterIndirectPredecrement(ActualFormatSize[size], source.reg)
+                        dest = OpRegisterIndirectPredecrement(ActualFormatSize[size], dest.reg)
                 else:
                     source, dest = dest, source
             if extra_source is None:
@@ -1867,10 +2066,10 @@ class M68000(Architecture):
             # shift/rotate/bit field
             if instruction & 0xF8C0 == 0xE0C0:
                 # shift/rotate
-                size = SIZE_WORD
+                size = DATA_WORD
                 direction = (instruction >> 8) & 1
                 style = (instruction >> 9) & 3
-                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], size)
+                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[2:], ActualFormatSize[size])
                 instr = ShiftStyle[style]
                 if direction:
                     instr += 'l'
@@ -1884,7 +2083,7 @@ class M68000(Architecture):
                 # TODO
                 style = (instruction >> 8) & 0x7
                 instr = 'bf'+BitfieldStyle[style]
-                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], SIZE_LONG)
+                dest, extra_dest = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[DATA_LONG])
                 length = 4
                 if extra_dest is not None:
                     length += extra_dest
@@ -1894,13 +2093,13 @@ class M68000(Architecture):
                 direction = (instruction >> 8) & 1
                 style = (instruction >> 3) & 3
                 if (instruction >> 5) & 1:
-                    source = OpRegisterDirect(SIZE_LONG, Registers[(instruction >> 9) & 7])
+                    source = OpRegisterDirect(ActualFormatSize[DATA_LONG], Registers[(instruction >> 9) & 7])
                 else:
                     val = (instruction >> 9) & 7
                     if val == 0:
                         val = 8
-                    source = OpImmediate(SIZE_BYTE, val)
-                dest = OpRegisterDirect(size, Registers[instruction & 7])
+                    source = OpImmediate(ActualFormatSize[DATA_BYTE], val)
+                dest = OpRegisterDirect(ActualFormatSize[size], Registers[instruction & 7])
                 instr = ShiftStyle[style]
                 if direction:
                     instr += 'l'
@@ -1921,26 +2120,164 @@ class M68000(Architecture):
                         opmode = extra & 0x7f
                         r_m = (extra >> 14) & 1
                         if r_m == 0:
-                            size = FP_SIZE_REG
-                            source = FP_OpRegisterDirect(size, FP_Registers[source_specifier])
-                            dest = FP_OpRegisterDirect(size, FP_Registers[destination_register])
+                            size = FP_DATA_REGISTER
+                            source = FP_OpRegisterDirect(FP_ActualFormatSize[size],
+                                                         FP_Registers[source_specifier])
+                            dest = FP_OpRegisterDirect(FP_ActualFormatSize[size],
+                                                       FP_Registers[destination_register])
                         else:
                             if source_specifier == 7:
                                 # VLW TODO: Add support for 'fmovecr'
                                 pass
                             else:
                                 size = source_specifier
-                                dest = FP_OpRegisterDirect(FP_SIZE_REG, FP_Registers[destination_register])
-                                source, extra_source = self.fp_decode_effective_address(instruction >> 3, instruction, data[4:], size)
+                                dest = FP_OpRegisterDirect(FP_ActualFormatSize[FP_DATA_REGISTER],
+                                                           FP_Registers[destination_register])
+                                source, extra_source = self.fp_decode_effective_address(
+                                    instruction >> 3,
+                                    instruction,
+                                    data[length:],
+                                    FP_ActualFormatSize[size],
+                                    size)
                                 if extra_source is not None:
                                     length += extra_source
 
+                        instr = None
                         if (opmode >> 3) == 6:
                             # VLW TODO: Add support for 'fsincos'
                             pass
-                        elif (opmode & 0x3b) == 0:
-                            # fmove
+                        else:
+                            instr_sig = opmode & 0x3b
+                            if opmode == 4 or (opmode & 0x41) == 0x41:
+                                # atypical opmode signature
+                                instr = 'fsqrt'
+                            elif instr_sig == 0:
+                                # fmove <ea> -> FP register
+                                instr = 'fmove'
+                            elif instr_sig == 0x20:
+                                instr = 'fdiv'
+                            elif instr_sig == 0x22:
+                                instr = 'fadd'
+                            elif instr_sig == 0x23:
+                                instr = 'fmul'
+                            elif instr_sig == 0x28:
+                                instr = 'fsub'
+                            elif instr_sig == 0x38:
+                                instr = 'fcmp'
+                            elif instr_sig == 0x3a:
+                                # TODO: Consider removing 'dest' for readability
+                                instr = 'ftst'
+
+                        # Handle single and double precision rounding variants
+                        if instr is not None and (opmode >> 6):
+                            if (opmode >> 2) & 1:
+                                instr = 'fd' + instr[1:]
+                            else:
+                                instr = 'fs' + instr[1:]
+
+                    elif sub_fp_operation_code == 3:
+                        # fmove FP register -> <ea>
+                        instr = 'fmove'
+                        source_register = (extra >> 7) & 7
+                        source = FP_OpRegisterDirect(FP_ActualFormatSize[FP_DATA_REGISTER],
+                                                     FP_Registers[source_register])
+                        size = (extra >> 10) & 7
+                        dest, extra_dest = self.fp_decode_effective_address(
+                            instruction >> 3,
+                            instruction,
+                            data[length:],
+                            FP_ActualFormatSize[size],
+                            size)
+                        if extra_dest is not None:
+                            length += extra_dest
+
+                    elif (sub_fp_operation_code & 0x6) == 4:
+                        # Per M68k manual, this is always a 32-bit operation
+                        size = FP_DATA_SCREGISTER
+                        source, extra_source = self.fp_decode_effective_address(
+                            instruction >> 3,
+                            instruction,
+                            data[length:],
+                            FP_ActualFormatSize[size],
+                            size)
+                        if extra_source is not None:
+                            length += extra_source
+
+                        fpscr = (extra >> 10) & 7
+                        if fpscr in FP_SCRegisters:
+                            # fmove single FP system control register <-> <ea>
                             instr = 'fmove'
+                            dest = FP_OpRegisterDirect(FP_ActualFormatSize[FP_DATA_SCREGISTER],
+                                                       FP_SCRegisters[fpscr])
+                        else:
+                            # fmove multiple FP system control registers <-> <ea>
+                            instr = 'fmovem'
+                            dest = FP_OpSCRegisterMovemList(
+                                FP_ActualFormatSize[FP_DATA_SCREGISTER],
+                                [FP_SCRegisters[i] for i in FP_SCRegisters.keys() if i & fpscr])
+
+                        if (extra >> 13) & 1:
+                            source, dest = dest, source
+
+                    elif (sub_fp_operation_code & 0x6) == 6:
+                        # TODO: Consider matching hardware enforced constraints on mode field,
+                        #       direction field, register list, and effective address combinations
+
+                        # fmove multiple FP data registers <-> <ea>
+                        instr = 'fmovem'
+                        # Per M68k manual, this is always an extended precision operation
+                        size = FP_DATA_EXTENDED_PRECISION
+                        source, extra_source = self.fp_decode_effective_address(
+                            instruction >> 3,
+                            instruction,
+                            data[length:],
+                            FP_ActualFormatSize[size],
+                            size)
+                        if extra_source is not None:
+                            length += extra_source
+
+                        mode_field = (extra >> 11) & 3
+                        if mode_field == 0 or mode_field == 2:
+                            # The static register list changes order based on the mode
+                            registers_list = extra & 0xff
+                            dest = FP_OpRegisterMovemList(
+                                FP_ActualFormatSize[FP_DATA_REGISTER],
+                                [FP_Registers[i] for i in range(len(FP_Registers))
+                                 if (1 << (len(FP_Registers)-1-i if mode_field else i))
+                                 & registers_list])
+                        else:
+                            # The dynamic register list is held in an integer data register
+                            dest = OpRegisterDirect(
+                                ActualFormatSize[DATA_BYTE], Registers[(extra >> 4) & 7])
+
+                        if (extra >> 13) & 1:
+                            source, dest = dest, source
+
+                elif (fp_operation_code & 2) == 2:
+                    # fbcc
+                    if (fp_operation_code & 1) == 0:
+                        format_specifier = '>h'
+                        length = 4
+                    else:
+                        format_specifier = '>L'
+                        length = 6
+
+                    instr = 'fb'+FP_Condition[instruction & 0x3f]
+                    displacement = struct.unpack_from(format_specifier, data, 2)[0]
+                    dest = OpRegisterIndirectDisplacement(
+                        ActualFormatSize[DATA_LONG], 'pc', displacement)
+                elif (fp_operation_code & 4) == 4:
+                    instr = 'fsave' if fp_operation_code == 4 else 'frestore'  # 5
+                    length = 2
+                    # State frames vary in size, use the largest one specified for the M68040
+                    source, extra_source = self.fp_decode_effective_address(
+                        instruction >> 3,
+                        instruction,
+                        data[length:],
+                        96)
+                    if extra_source is not None:
+                        length += extra_source
+
             elif instruction & 0xff20 == 0xf400:
                 instr = 'cinv'
                 length = 2
@@ -1990,7 +2327,7 @@ class M68000(Architecture):
                     )
                 )
         elif instr in ('movea', 'movec'):
-            # dest.size = SIZE_LONG
+            # dest.size = DATA_LONG
             # il.append(
             #     dest.get_dest_il(il,
             #         il.sign_extend(4,
@@ -2021,7 +2358,7 @@ class M68000(Architecture):
                 )
             )
         elif instr == 'adda':
-            dest.size = SIZE_LONG
+            dest.size = DATA_LONG
             il.append(
                 dest.get_dest_il(il,
                     il.add(4,
@@ -2057,7 +2394,7 @@ class M68000(Architecture):
                 )
             )
         elif instr == 'suba':
-            dest.size = SIZE_LONG
+            dest.size = DATA_LONG
             il.append(
                 dest.get_dest_il(il,
                     il.sub(4,
@@ -2195,7 +2532,7 @@ class M68000(Architecture):
             if size == 1:
                 dividend_il = dest.get_source_il(il)
                 divisor_il = source.get_source_il(il)
-                dest.size = SIZE_LONG
+                dest.size = DATA_LONG
                 il.append(
                     dest.get_dest_il(il,
                         il.or_expr(4,
@@ -2252,7 +2589,7 @@ class M68000(Architecture):
             if size == 1:
                 dividend_il = dest.get_source_il(il)
                 divisor_il = source.get_source_il(il)
-                dest.size = SIZE_LONG
+                dest.size = DATA_LONG
                 il.append(
                     dest.get_dest_il(il,
                         il.or_expr(4,
@@ -2737,7 +3074,7 @@ class M68000(Architecture):
                 )
             )
         elif instr == 'cmpa':
-            dest.size = SIZE_LONG
+            dest.size = DATA_LONG
             il.append(
                 il.sub(4,
                     dest.get_source_il(il),
@@ -3022,7 +3359,7 @@ class M68000(Architecture):
                 il.push(4, dest.get_address_il(il))
             )
         elif instr == 'link':
-            source.size = SIZE_LONG
+            source.size = DATA_LONG
             il.append(
                 il.push(4, source.get_source_il(il))
             )
@@ -3364,7 +3701,7 @@ class M68000(Architecture):
                     'bvc', 'bvs', 'bpl', 'bmi', 'bge', 'blt', 'bgt', 'ble',
                     'dbt', 'dbf', 'dbhi', 'dbls', 'dbcc', 'dbcs', 'dbne',
                     'dbeq', 'dbvc', 'dbvs', 'dbpl', 'dbmi', 'dbge', 'dblt',
-                    'dbgt', 'dble'):
+                    'dbgt', 'dble') + FBcc_Instructions:
             conditional = False
             branch_dest = None
 
