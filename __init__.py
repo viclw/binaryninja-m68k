@@ -24,7 +24,9 @@ THE SOFTWARE.
 
 from __future__ import print_function
 
+import math
 import struct
+import sys
 import traceback
 import os
 
@@ -113,7 +115,7 @@ Condition = [
 ]
 
 
-# Used by 'FBcc' and 'FScc' instructions
+# Used by the 'FBcc', 'FScc', and 'FTRAPcc' instructions
 FP_Condition = [
     'f',     # 000000
     'eq',    # 000001
@@ -250,6 +252,43 @@ FP_SizeSuffix = [
     '.x',  # FP_DATA_REGISTER
     '.l'   # FP_DATA_SCREGISTER
 ]
+
+
+# Converts a m64k IEEE 754 64-bit extended precision formatted bytes to a float
+# NOTE: This function does NOT attempt to preserve the precision of the extended formatted float
+#       but only converts it into a standard float for display purposes, etc
+def m64k_extended_bytes2float(raw_bytes):
+    exp_bias = 0x3fff
+    int_bit = 63
+    zero_pad_start_bit = 64
+    exp_start_bit = 80
+    sign_bit = 95
+
+    exp_mask = ((1 << (sign_bit-exp_start_bit))-1) << exp_start_bit
+    mantissa_mask = (1 << zero_pad_start_bit)-1
+
+    raw_int = int.from_bytes(raw_bytes, 'big')
+
+    mantissa = raw_int & mantissa_mask
+    exp = ((raw_int & exp_mask) >> exp_start_bit)
+    sign = raw_int >> sign_bit
+
+    result = None
+    if exp == 0x7fff:
+        result = float('inf') if mantissa == 0 else float('nan')
+    else:
+        result = mantissa * 2**(-int_bit + exp - exp_bias)
+
+        if result and isinstance(result, int):
+            result_10_exp = math.log10(result)
+            # Perform a lazy check to see if we have exceeded the float size
+            # NOTE: Python automatically bounds checks against the minimal float size
+            if result_10_exp >= sys.float_info.max_10_exp:
+                result = float('inf')
+
+    # NOTE: Python currently ignores setting 'nan' negative. Serendipitously this matches the
+    #       behavior specified in the m68k manual.
+    return float((-1)**sign * result)
 
 
 # Operands
@@ -1066,26 +1105,30 @@ class FP_OpImmediate:
     #   size:                        data format:
     #   FP_DATA_SINGLE_PRECISION     IEEE 754
     #   FP_DATA_DOUBLE_PRECISION     IEEE 754
+    #   FP_DATA_EXTENDED_PRECISION   IEEE 754 m64k modified 64-bit precision
     #
     def __init__(self, size, data):
         self.size = size
 
-        # TODO: Add proper support for extend and packed
+        # TODO: Add proper support for packed
         format_specifier = None
-        if self.size == FP_ActualFormatSize[FP_DATA_SINGLE_PRECISION]:
-            format_specifier = '>f'
-        elif self.size == FP_ActualFormatSize[FP_DATA_DOUBLE_PRECISION]:
-            format_specifier = '>d'
+        if self.size == FP_ActualFormatSize[FP_DATA_EXTENDED_PRECISION]:
+            value_unpacked = m64k_extended_bytes2float(data)
         else:
-            format_specifier = '>Q'
+            if self.size == FP_ActualFormatSize[FP_DATA_SINGLE_PRECISION]:
+                format_specifier = '>f'
+            elif self.size == FP_ActualFormatSize[FP_DATA_DOUBLE_PRECISION]:
+                format_specifier = '>d'
+            else:
+                format_specifier = '>Q'
 
-        value_unpacked = struct.unpack_from(format_specifier, data, 0)[0]
+            value_unpacked = struct.unpack_from(format_specifier, data, 0)[0]
 
         if format_specifier == '>Q':
             self.value = value_unpacked
             self.text = "${:x}".format(value_unpacked)
         else:
-            self.value = int.from_bytes(data, byteorder='big')
+            self.value = int.from_bytes(data, 'big')
             self.text = "${:.4e}".format(value_unpacked)
 
     def __repr__(self):
@@ -1242,53 +1285,49 @@ class M68000(Architecture):
         mode &= 0x07
         register &= 0x07
 
+        # TODO: As a wrapper, a lot of the following checks can eventually go away. But for now, it
+        #       provides some bounds checking and insight into what FP effective addresses have
+        #       been tested.
+
         if mode == 0:
             # data register direct
-            # VLW TODO: Remove size check once variants are tested and approved
-            if size == FP_ActualFormatSize[FP_DATA_LONG]:
+            if size <= FP_ActualFormatSize[FP_DATA_LONG]:
                 return self.decode_effective_address(mode, register, data, size)
         if mode == 1:
             # address register direct
-            # VLW TODO: Remove size check once variants are tested and approved
-            if size == FP_ActualFormatSize[FP_DATA_LONG]:
+            if size <= FP_ActualFormatSize[FP_DATA_LONG]:
                 return self.decode_effective_address(mode, register, data, size)
         elif mode == 2:
             # address register indirect
-            # VLW TODO: Remove size check once variants are tested and approved
             if size == FP_ActualFormatSize[FP_DATA_LONG] or \
                size == FP_ActualFormatSize[FP_DATA_SINGLE_PRECISION]:
                 return self.decode_effective_address(mode, register, data, size)
         elif mode == 3:
             # address register indirect with postincrement
-            # VLW TODO: We shouldn't need to catch and call this explicitly
             return self.decode_effective_address(mode, register, data, size)
         elif mode == 4:
             # address register indirect with predecrement
-            # VLW TODO: We shouldn't need to catch and call this explicitly
             return self.decode_effective_address(mode, register, data, size)
         elif mode == 5:
             # address register indirect with displacement
-            # VLW TODO: We shouldn't need to catch and call this explicitly
             return self.decode_effective_address(mode, register, data, size)
         elif mode == 6:
             # extended addressing mode
-            # VLW TODO: We shouldn't need to catch and call this explicitly
             return self.decode_effective_address(mode, register, data, size)
         elif mode == 7:
             if register == 1:
                 # absolute long addressing
-                # VLW TODO: We shouldn't need to catch and call this explicitly
                 return self.decode_effective_address(mode, register, data, size)
             if register == 4:
                 # immediates
                 if fp_format == FP_DATA_SINGLE_PRECISION or \
-                   fp_format == FP_DATA_DOUBLE_PRECISION:
-                    return (FP_OpImmediate(size, data), size)
+                   fp_format == FP_DATA_DOUBLE_PRECISION or \
+                   fp_format == FP_DATA_EXTENDED_PRECISION:
+                    return (FP_OpImmediate(size, data[:size]), size)
                 elif size is not None and size <= ActualFormatSize[DATA_LONG]:
                     return self.decode_effective_address(mode, register, data, size)
 
-        # VLW DEBUG - Help identify unsupported instructions in the GUI
-        log_error('Unsupported instruction')
+        # log_error('Unsupported FP effective address')
 
         return (None, None)
 
@@ -2127,12 +2166,12 @@ class M68000(Architecture):
                                                        FP_Registers[destination_register])
                         else:
                             if source_specifier == 7:
-                                # VLW TODO: Add support for 'fmovecr'
+                                # TODO: Add support for 'fmovecr'
                                 pass
                             else:
-                                size = source_specifier
                                 dest = FP_OpRegisterDirect(FP_ActualFormatSize[FP_DATA_REGISTER],
                                                            FP_Registers[destination_register])
+                                size = source_specifier
                                 source, extra_source = self.fp_decode_effective_address(
                                     instruction >> 3,
                                     instruction,
@@ -2144,16 +2183,20 @@ class M68000(Architecture):
 
                         instr = None
                         if (opmode >> 3) == 6:
-                            # VLW TODO: Add support for 'fsincos'
+                            # TODO: Add support for 'fsincos'
                             pass
                         else:
                             instr_sig = opmode & 0x3b
-                            if opmode == 4 or (opmode & 0x41) == 0x41:
+                            if opmode == 4 or (opmode & 0x63) == 0x41:
                                 # atypical opmode signature
                                 instr = 'fsqrt'
                             elif instr_sig == 0:
                                 # fmove <ea> -> FP register
                                 instr = 'fmove'
+                            elif instr_sig == 0x18:
+                                instr = 'fabs'
+                            elif instr_sig == 0x1a:
+                                instr = 'fneg'
                             elif instr_sig == 0x20:
                                 instr = 'fdiv'
                             elif instr_sig == 0x22:
@@ -2253,19 +2296,60 @@ class M68000(Architecture):
                         if (extra >> 13) & 1:
                             source, dest = dest, source
 
-                elif (fp_operation_code & 2) == 2:
-                    # fbcc
-                    if (fp_operation_code & 1) == 0:
-                        format_specifier = '>h'
-                        length = 4
+                elif fp_operation_code == 1:
+                    extra = struct.unpack_from('>H', data, 2)[0]
+                    mode = (instruction >> 3) & 7
+                    trap_mode_field = instruction & 7
+                    if mode == 1:
+                        # TODO: Add support for 'FDBcc'
+                        pass
+                    elif mode == 7 and trap_mode_field > 1:
+                        condition = extra & 0x3f
+                        if condition < len(FP_Condition):
+                            # ftrapcc
+                            instr = 'ftrap'+FP_Condition[condition]
+                            length = 4
+                            if (trap_mode_field & 2) == 2:
+                                register = 4  # immediate
+                                size = FP_DATA_WORD if trap_mode_field == 2 else FP_DATA_LONG
+                                dest, extra_dest = self.fp_decode_effective_address(
+                                    mode,
+                                    register,
+                                    data[length:],
+                                    FP_ActualFormatSize[size],
+                                    size)
+                                if extra_dest is not None:
+                                    length += extra_dest
                     else:
-                        format_specifier = '>L'
-                        length = 6
-
-                    instr = 'fb'+FP_Condition[instruction & 0x3f]
-                    displacement = struct.unpack_from(format_specifier, data, 2)[0]
-                    dest = OpRegisterIndirectDisplacement(
-                        ActualFormatSize[DATA_LONG], 'pc', displacement)
+                        condition = extra & 0x3f
+                        if condition < len(FP_Condition):
+                            # fscc
+                            instr = 'fs'+FP_Condition[condition]
+                            # Per M68k manual, this is always a byte operation
+                            size = FP_DATA_BYTE
+                            length = 4
+                            dest, extra_dest = self.fp_decode_effective_address(
+                                instruction >> 3,
+                                instruction,
+                                data[length:],
+                                FP_ActualFormatSize[size],
+                                size)
+                            if extra_dest is not None:
+                                length += extra_dest
+                elif (fp_operation_code & 2) == 2:
+                    condition = instruction & 0x3f
+                    if condition < len(FP_Condition):
+                        # fbcc
+                        instr = 'fb'+FP_Condition[condition]
+                        if (fp_operation_code & 1) == 0:
+                            format_specifier = '>h'
+                            length = 4
+                        else:
+                            format_specifier = '>L'
+                            length = 6
+                        displacement = struct.unpack_from(format_specifier, data, 2)[0]
+                        dest = OpRegisterIndirectDisplacement(
+                            ActualFormatSize[DATA_LONG], 'pc', displacement)
                 elif (fp_operation_code & 4) == 4:
                     instr = 'fsave' if fp_operation_code == 4 else 'frestore'  # 5
                     length = 2
