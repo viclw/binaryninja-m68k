@@ -37,7 +37,7 @@ from binaryninja.binaryview import BinaryView
 from binaryninja.plugin import PluginCommand
 from binaryninja.interaction import AddressField, ChoiceField, get_form_input
 from binaryninja.types import Symbol
-from binaryninja.log import log_error, log_warn
+from binaryninja.log import log_error
 from binaryninja.enums import (Endianness, BranchType, InstructionTextTokenType,
         LowLevelILOperation, LowLevelILFlagCondition, FlagRole, SegmentFlag,
         ImplicitRegisterExtend, SymbolType)
@@ -254,7 +254,7 @@ FP_SizeSuffix = [
 ]
 
 
-# Converts a m64k IEEE 754 64-bit extended precision formatted bytes to a float
+# Converts a m64k IEEE 754 64-bit extended precision formatted bytes object to a float
 # NOTE: This function does NOT attempt to preserve the precision of the extended formatted float
 #       but only converts it into a standard float for display purposes, etc
 def m64k_extended_bytes2float(raw_bytes):
@@ -380,7 +380,7 @@ class FP_OpRegisterDirect(OpRegisterDirect):
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return il.reg(self.size, self.reg)
@@ -526,7 +526,7 @@ class FP_OpRegisterMovemList:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return [il.reg(self.size, reg) for reg in self.regs]
@@ -566,7 +566,7 @@ class FP_OpSCRegisterMovemList:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return [il.reg(self.size, reg) for reg in self.regs]
@@ -1153,13 +1153,13 @@ class FP_OpImmediate:
         return None
 
     def get_address_il(self, il):
-        return None
+        return il.unimplemented()
 
     def get_source_il(self, il):
         return il.const(self.size, self.value)
 
     def get_dest_il(self, il, value, flags=0):
-        return None
+        return il.unimplemented()
 
 
 # condition mapping to LLIL flag conditions
@@ -2208,7 +2208,6 @@ class M68000(Architecture):
                             elif instr_sig == 0x38:
                                 instr = 'fcmp'
                             elif instr_sig == 0x3a:
-                                # TODO: Consider removing 'dest' for readability
                                 instr = 'ftst'
 
                         # Handle single and double precision rounding variants
