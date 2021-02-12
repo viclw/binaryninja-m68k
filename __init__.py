@@ -286,8 +286,7 @@ def m64k_extended_bytes2float(raw_bytes):
             if result_10_exp >= sys.float_info.max_10_exp:
                 result = float('inf')
 
-    # NOTE: Python currently ignores setting 'nan' negative. Serendipitously this matches the
-    #       behavior specified in the m68k manual.
+    # TODO: Python currently ignores setting 'nan' negative
     return float((-1)**sign * result)
 
 
