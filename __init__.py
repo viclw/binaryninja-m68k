@@ -500,7 +500,7 @@ class FP_OpRegisterMovemList:
                     last_reg = i
                     tokens.append(InstructionTextToken(
                         InstructionTextTokenType.RegisterToken, FP_Registers[i]))
-                elif last_reg is i-1:
+                elif last_reg == i-1:
                     seq = True
                     last_reg = i
                 else:
@@ -2233,7 +2233,7 @@ class M68000(Architecture):
                         if extra_dest is not None:
                             length += extra_dest
 
-                    elif (sub_fp_operation_code & 0x6) == 4:
+                    elif (sub_fp_operation_code & 6) == 4:
                         # Per M68k manual, this is always a 32-bit operation
                         size = FP_DATA_SCREGISTER
                         source, extra_source = self.fp_decode_effective_address(
@@ -2261,7 +2261,7 @@ class M68000(Architecture):
                         if (extra >> 13) & 1:
                             source, dest = dest, source
 
-                    elif (sub_fp_operation_code & 0x6) == 6:
+                    elif (sub_fp_operation_code & 6) == 6:
                         # TODO: Consider matching hardware enforced constraints on mode field,
                         #       direction field, register list, and effective address combinations
 
