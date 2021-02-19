@@ -794,7 +794,10 @@ class OpRegisterIndirectIndex:
         if self.offset != 0:
             tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "("))
-        tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        if self.reg is not None:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        else:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "-"))
         tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
         tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.ireg))
         tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "."))
@@ -812,11 +815,17 @@ class OpRegisterIndirectIndex:
         return None
 
     def get_address_il(self, il):
+        if self.reg is None:
+            reg_off_il = il.const(4, self.offset)
+        else:
+            reg_off_il =\
+                il.add(4,
+                    il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
+                    il.const(4, self.offset)
+                )
+
         return il.add(4,
-            il.add(4,
-                il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
-                il.const(4, self.offset)
-            ),
+            reg_off_il,
             il.mult(4,
                 il.reg(4 if self.ireg_long else 2, self.ireg),
                 il.const(1, self.scale)
@@ -849,10 +858,12 @@ class OpMemoryIndirect:
         tokens = []
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "("))
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "["))
-        if self.offset != 0:
-            tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
-            tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
-        tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
+        if self.reg is not None:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        else:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "-"))
         tokens.append(InstructionTextToken(InstructionTextTokenType.EndMemoryOperandToken, "]"))
         if self.outer_displacement != 0:
             tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
@@ -867,13 +878,17 @@ class OpMemoryIndirect:
         return None
 
     def get_address_il(self, il):
-        return il.add(4,
-            il.load(4,
+        if self.reg is None:
+            reg_off_il = il.const(4, self.offset)
+        else:
+            reg_off_il =\
                 il.add(4,
                     il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
                     il.const(4, self.offset)
-                ),
-            ),
+                )
+
+        return il.add(4,
+            il.load(4, reg_off_il),
             il.const(4, self.outer_displacement)
         )
 
@@ -906,10 +921,12 @@ class OpMemoryIndirectPostindex:
         tokens = []
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "("))
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "["))
-        if self.offset != 0:
-            tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
-            tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
-        tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
+        if self.reg is not None:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        else:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "-"))
         tokens.append(InstructionTextToken(InstructionTextTokenType.EndMemoryOperandToken, "]"))
         tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
         tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.ireg))
@@ -931,13 +948,17 @@ class OpMemoryIndirectPostindex:
         return None
 
     def get_address_il(self, il):
-        return il.add(4,
-            il.load(4,
+        if self.reg is None:
+            reg_off_il = il.const(4, self.offset)
+        else:
+            reg_off_il =\
                 il.add(4,
                     il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
                     il.const(4, self.offset)
                 )
-            ),
+
+        return il.add(4,
+            il.load(4, reg_off_il),
             il.add(4,
                 il.mult(4,
                     il.reg(4 if self.ireg_long else 2, self.ireg),
@@ -976,10 +997,12 @@ class OpMemoryIndirectPreindex:
         tokens = []
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "("))
         tokens.append(InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "["))
-        if self.offset != 0:
-            tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
-            tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
-        tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, "${:x}".format(self.offset), self.offset))
+        tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
+        if self.reg is not None:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.reg))
+        else:
+            tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "-"))
         tokens.append(InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ","))
         tokens.append(InstructionTextToken(InstructionTextTokenType.RegisterToken, self.ireg))
         tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "."))
@@ -1001,13 +1024,19 @@ class OpMemoryIndirectPreindex:
         return None
 
     def get_address_il(self, il):
+        if self.reg is None:
+            reg_off_il = il.const(4, self.offset)
+        else:
+            reg_off_il =\
+                il.add(4,
+                    il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
+                    il.const(4, self.offset)
+                )
+
         return il.add(4,
             il.load(4,
                 il.add(4,
-                    il.add(4,
-                        il.const_pointer(4, il.current_address+2) if self.reg == 'pc' else il.reg(4, self.reg),
-                        il.const(4, self.offset)
-                    ),
+                    reg_off_il,
                     il.mult(4,
                         il.reg(4 if self.ireg_long else 2, self.ireg),
                         il.const(1, self.scale)
@@ -1406,16 +1435,19 @@ class M68000(Architecture):
                 bd = 0
                 od = 0
 
+                # base register suppress
+                if (extra >> 7) & 1:
+                    reg = None
+
                 # base displacement
-                if not (extra >> 7) & 1:
-                    if (extra >> 4) & 3 == 2:
-                        # word base displacement
-                        bd = struct.unpack_from('>h', data, length)[0]
-                        length += 2
-                    elif (extra >> 4) & 3 == 3:
-                        # long base displacement
-                        bd = struct.unpack_from('>L', data, length)[0]
-                        length += 4
+                if (extra >> 4) & 3 == 2:
+                    # word base displacement
+                    bd = struct.unpack_from('>h', data, length)[0]
+                    length += 2
+                elif (extra >> 4) & 3 == 3:
+                    # long base displacement
+                    bd = struct.unpack_from('>L', data, length)[0]
+                    length += 4
 
                 # outer displacement
                 if extra & 3 == 2:
