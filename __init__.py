@@ -1469,7 +1469,7 @@ class M68000(Architecture):
                     else:
                         instr = 'cmp2'
                     source, extra_source = self.decode_effective_address(instruction >> 3, instruction, data[4:], ActualFormatSize[DATA_BYTE]) # check
-                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(instruction >> 12) & 15])
+                    dest = OpRegisterDirect(ActualFormatSize[size], Registers[(extra >> 12) & 15])
                     if extra_source is None:
                         return error_value
                     length = 4+extra_source
