@@ -25,8 +25,11 @@ THE SOFTWARE.
 from __future__ import print_function
 
 import math
+import re
 import struct
+import subprocess
 import sys
+import tempfile
 import traceback
 import os
 
@@ -113,6 +116,9 @@ Condition = [
     'gt', # CONDITION_GREATER_THAN
     'le'  # CONDITION_LESS_OR_EQUAL
 ]
+
+Bcc_Instructions = tuple('b'+x for x in Condition)
+DBcc_Instructions = tuple('db'+x for x in Condition)
 
 
 # Used by the 'FBcc', 'FScc', and 'FTRAPcc' instructions
@@ -4042,6 +4048,151 @@ class M68040(M68030):
 
     # remove cpBcc, cpDBcc, cpGEN, cpRESTORE, cpSAVE, cpScc, cpTRAPcc, PFLUSHA, PLOAD, PMOVE
     # add CINV, CPUSH, floating point, MOVE16
+
+    # The plug-in generated disassembly may require some changes for GCC compatibility
+    def prep_for_gcc_assembly(self, disas, addr):
+        # Currently only instructions with operands require modification
+        tokens = disas.split(maxsplit=1)
+        if len(tokens) == 1:
+            return disas, 0
+
+        instr, opers = tokens
+        addr_prefix = '($'
+
+        # Branch instruction handling
+        if instr == 'bra' or\
+           instr == 'bsr' or\
+           instr in Bcc_Instructions or\
+           instr in DBcc_Instructions:
+
+            # Sanity check the expected format before proceeding
+            if addr_prefix in opers:
+                target_addr = int(opers.split(addr_prefix)[1][:-1], 16)
+                displ = target_addr - addr
+
+                if instr in DBcc_Instructions:
+                    # Overflow check
+                    if displ < -0x8000+2 or displ > 0x7fff+2:
+                        raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 2 bytes')
+
+                    reg = opers.split(',')[0]
+                    return f'{instr} %{reg},.+{hex(displ)}', 0
+                else:
+                    # BRA, BSR, Bcc
+                    # Find the minimal encoding size
+                    if displ >= -0x80+2 and displ <= 0x7f+2:
+                        size = 's'  # small
+                    elif displ >= -0x8000+2 and displ <= 0x7fff+2:
+                        size = 'w'  # word
+                    elif displ >= -0x80000000+2 and displ <= 0x7fffffff+2:
+                        size = 'l'  # long
+                    else:
+                        # Overflow
+                        raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 4 bytes')
+
+                    return f'{instr}{size} {hex(displ)}', 0
+
+        else:
+            # Modify PC relative addresses for GCC compatibility
+            # NOTE: Absolute and immediate addresses do not require any modification
+            for oper in opers.split(','):
+                if oper.startswith(addr_prefix) and oper[-1] == ')':
+
+                    # PC relative address found
+                    target_addr = int(oper.split(addr_prefix)[1][:-1], 16)
+                    displ = target_addr - addr
+                    disas = disas.replace(oper, f'pc@({hex(displ)}-2)')
+
+                    # Only one occurrence expected
+                    break
+
+            # Add '%' to address and data register names but not equivalent hex numbers
+            disas = re.sub(r'\b([ad][0-7])\b', r'%\1', disas, flags=re.I)
+
+            # Prepend any special register names with '%'
+            regs = re.findall('sp|pc|vbr|(?<!a|j)sr|tc|cacr|dtt[0-1]|itt[0-1]|urp|dfc|sfc|usp|msp|isp', disas, re.I)
+            for reg in set(regs):
+                disas = disas.replace(reg, '%'+reg)
+
+            # Replace any '$' with '0x' while considering the sign placement
+            disas = disas.replace('$', '0x')
+            disas = disas.replace('0x-', '-0x')
+
+        # Assembling at virtual address 0 empirically provides better results
+        return disas, 0
+
+    def assemble(self, code, addr=0):
+        # Make sure there is something to do
+        if code is None or not code:
+            raise ValueError('Nothing to assemble')
+
+        # BN API says the input assembly should be a string but that doesn't appear to be true
+        # (at least with version '2.2.2486-dev')
+        if isinstance(code, bytes):
+            code = code.decode('utf-8')
+
+        # Perform any GCC compatible syntax changes
+        code, addr = self.prep_for_gcc_assembly(code, addr)
+
+        # Create unique assembler input/output filenames for this request in a temp directory
+        temp_dir = os.path.join(tempfile.gettempdir(), 'binaryninja-m68k')
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+
+        temp_fname_prefix = next(tempfile._get_candidate_names())
+        inputfile = os.path.join(temp_dir, temp_fname_prefix + '_input' + '.s')
+        outputfile = os.path.join(temp_dir, temp_fname_prefix + '_output')
+
+        # Write the instruction to assemble
+        with open(inputfile, 'w') as f:
+            f.write(code + os.linesep)
+
+        # Assemble and link the instruction
+        # TODO: Add support for other architectures (ISAs)
+        gcc_cmd = f'm68k-linux-gnu-gcc -nostdlib -Ttext=0x{addr:x} --entry 0x{addr:x}'\
+                  f' -m68040 {inputfile} -o {outputfile}'
+        proc = subprocess.Popen(gcc_cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                shell=True)
+        out, err = proc.communicate()
+        if out:
+            raise ValueError(f'Assembly error: {out}')
+
+        # Check for success
+        if proc.returncode:
+            raise ValueError('Assembly failed')
+
+        # Extract the executable code
+        objdump_cmd = f'm68k-linux-gnu-objdump -s -j.text {outputfile}'
+        proc = subprocess.Popen(objdump_cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                shell=True)
+        out, err = proc.communicate()
+        if err:
+            raise ValueError(f'Assembly parsing error: {err}')
+
+        # Check for success
+        if proc.returncode:
+            raise ValueError('Assembly parsing failed')
+
+        # Delete temp files on success
+        os.remove(inputfile)
+        os.remove(outputfile)
+
+        # Extract the assembly bytes, removing the address and ASCII, concatenating words as needed
+        asm_bytes = re.split(rb'\s{2,}', out.split(b'.text:\n')[1].rstrip())[0].split()[1:]
+        assembly = b''.join(asm_bytes)
+
+        # Convert objdump ASCII characters to proper hex bytes
+        assembly = rb'\x'.join(assembly[i:i+2] for i in range(0, len(assembly), 2))
+        assembly = rb'\x' + assembly
+
+        # Decode escaped hex bytes as actual unicode characters then encode back into a byte string
+        assembly = bytes(map(ord, assembly.decode('unicode-escape')))
+
+        return assembly
 
 
 class M68LC040(M68040):
