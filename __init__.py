@@ -742,9 +742,10 @@ class OpRegisterIndirectDisplacement:
 
     def format(self, addr):
         if self.reg == 'pc':
+            target_addr = (addr+2+self.offset) & 0xffffffff
             return [
                 InstructionTextToken(InstructionTextTokenType.BeginMemoryOperandToken, "("),
-                InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, "${:08x}".format(addr+2+self.offset), addr+2+self.offset, 4),
+                InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, "${:08x}".format(target_addr), target_addr, 4),
                 InstructionTextToken(InstructionTextTokenType.EndMemoryOperandToken, ")")
             ]
         else:
@@ -764,7 +765,7 @@ class OpRegisterIndirectDisplacement:
 
     def get_address_il(self, il):
         if self.reg == 'pc':
-            return il.const_pointer(4, il.current_address+2+self.offset)
+            return il.const_pointer(4, (il.current_address+2+self.offset) & 0xffffffff)
         else:
             return il.add(4,
                 il.reg(4, self.reg),
@@ -3791,7 +3792,7 @@ class M68000(Architecture):
                     bt = BranchType.UnresolvedBranch
             elif isinstance(dest, OpRegisterIndirectDisplacement):
                 if dest.reg == 'pc':
-                    branch_dest = addr+2+dest.offset
+                    branch_dest = (addr+2+dest.offset) & 0xffffffff
                 else:
                     bt = BranchType.UnresolvedBranch
             elif isinstance(dest, OpRegisterIndirectIndex):
