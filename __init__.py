@@ -4111,7 +4111,7 @@ class M68040(M68030):
             disas = re.sub(r'\b([ad][0-7])\b', r'%\1', disas, flags=re.I)
 
             # Prepend any special register names with '%'
-            regs = re.findall('sp|pc|vbr|(?<!a|j)sr|tc|cacr|dtt[0-1]|itt[0-1]|urp|dfc|sfc|usp|msp|isp', disas, re.I)
+            regs = re.findall('sp|pc|vbr|(?<!a|j)sr|tc|cacr|dtt[0-1]|itt[0-1]|urp|dfc|sfc|usp|msp|isp|fp[0-7]', disas, re.I)
             for reg in set(regs):
                 disas = disas.replace(reg, '%'+reg)
 
