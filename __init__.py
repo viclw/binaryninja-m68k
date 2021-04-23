@@ -3456,8 +3456,13 @@ class M68000(Architecture):
             dstil = dest.get_address_il(il)
 
             dstlabel = None
-            if il[dstil].operation == LowLevelILOperation.LLIL_CONST:
+            if il[dstil].operation == LowLevelILOperation.LLIL_CONST_PTR:
+                # OpRegisterIndirectDisplacement
                 dstlabel = il.get_label_for_address(il.arch, il[dstil].constant)
+            elif (il[dstil].operation == LowLevelILOperation.LLIL_SX and
+                  il[dstil].operands[0].operation == LowLevelILOperation.LLIL_CONST):
+                # OpAbsolute
+                dstlabel = il.get_label_for_address(il.arch, il[dstil].operands[0].constant)
 
             if dstlabel is not None:
                 il.append(
@@ -3496,7 +3501,7 @@ class M68000(Architecture):
                 il.append(il.unimplemented())
             else:
                 t = None
-                if il[dest_il].operation == LowLevelILOperation.LLIL_CONST:
+                if il[dest_il].operation == LowLevelILOperation.LLIL_CONST_PTR:
                     t = il.get_label_for_address(il.arch, il[dest_il].constant)
 
                 indirect = False
@@ -3541,8 +3546,8 @@ class M68000(Architecture):
                 il.append(il.unimplemented())
             else:
                 branch = None
-                if il[dest_il].operation == LowLevelILOperation.LLIL_CONST:
-                    branch = il.get_label_for_address(Architecture['M68000'], il[dest_il].constant)
+                if il[dest_il].operation == LowLevelILOperation.LLIL_CONST_PTR:
+                    branch = il.get_label_for_address(il.arch, il[dest_il].constant)
 
                 indirect = False
 
