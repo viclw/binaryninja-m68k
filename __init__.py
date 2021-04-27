@@ -4065,38 +4065,60 @@ class M68040(M68030):
         instr, opers = tokens
         addr_prefix = '($'
 
-        # Branch instruction handling
-        if instr == 'bra' or\
-           instr == 'bsr' or\
-           instr in Bcc_Instructions or\
-           instr in DBcc_Instructions:
+        if instr[0] == 'b' and (
+                instr == 'bra' or
+                instr == 'bsr' or
+                instr in Bcc_Instructions):
 
             # Sanity check the expected format before proceeding
             if addr_prefix in opers:
                 target_addr = int(opers.split(addr_prefix)[1][:-1], 16)
                 displ = target_addr - addr
 
-                if instr in DBcc_Instructions:
-                    # Overflow check
-                    if displ < -0x8000+2 or displ > 0x7fff+2:
-                        raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 2 bytes')
-
-                    reg = opers.split(',')[0]
-                    return f'{instr} %{reg},.+{hex(displ)}', 0
+                # BRA, BSR, Bcc
+                # Find the minimal encoding size
+                if displ >= -0x80+2 and displ <= 0x7f+2:
+                    size = 's'  # small
+                elif displ >= -0x8000+2 and displ <= 0x7fff+2:
+                    size = 'w'  # word
+                elif displ >= -0x80000000+2 and displ <= 0x7fffffff+2:
+                    size = 'l'  # long
                 else:
-                    # BRA, BSR, Bcc
-                    # Find the minimal encoding size
-                    if displ >= -0x80+2 and displ <= 0x7f+2:
-                        size = 's'  # small
-                    elif displ >= -0x8000+2 and displ <= 0x7fff+2:
-                        size = 'w'  # word
-                    elif displ >= -0x80000000+2 and displ <= 0x7fffffff+2:
-                        size = 'l'  # long
-                    else:
-                        # Overflow
-                        raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 4 bytes')
+                    # Overflow
+                    raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 4 bytes')
 
-                    return f'{instr}{size} {hex(displ)}', 0
+                disas = f'{instr}{size} {hex(displ)}'
+
+        elif instr[0:2] == 'db':
+
+            # Sanity check the expected format before proceeding
+            if addr_prefix in opers:
+                target_addr = int(opers.split(addr_prefix)[1][:-1], 16)
+                displ = target_addr - addr
+
+                # DBcc
+                # Overflow check
+                if displ < -0x8000+2 or displ > 0x7fff+2:
+                    raise ValueError(f'Assembly error: value of {hex(displ)} too large for field of 2 bytes')
+
+                reg = opers.split(',')[0]
+                disas = f'{instr} %{reg},.+{hex(displ)}'
+
+        elif instr[0:2] == 'fb':
+
+            # Sanity check the expected format before proceeding
+            if addr_prefix in opers:
+                target_addr = int(opers.split(addr_prefix)[1][:-1], 16)
+                displ = target_addr - addr
+
+                # FBcc
+                # Find the minimal encoding size
+                if displ < -0x8000+2 and displ > 0x7fff+2:
+                    size = '.l'  # long
+                else:
+                    size = ''    # word
+
+                disas = f'{instr}{size} {hex(displ)}'
 
         else:
             # Modify PC relative addresses for GCC compatibility
