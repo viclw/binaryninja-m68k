@@ -4134,11 +4134,15 @@ class M68040(M68030):
                     # Only one occurrence expected
                     break
 
-            # Add '%' to address and data register names but not equivalent hex numbers
-            disas = re.sub(r'\b([ad][0-7])\b', r'%\1', disas, flags=re.I)
+            # Add '%' to address and data register names but not equivalent hex addresses
+            disas = re.sub(r'((?<![a-f]|[0-9]|\$)[ad][0-7])', r'%\1', disas, flags=re.I)
+
+            # Add '%' to 'dfc' but not equivalent hex addresses
+            disas = re.sub(r'((?<=,)dfc|dfc(?=,))', r'%\1', disas, flags=re.I)
 
             # Prepend any special register names with '%'
-            regs = re.findall('sp|pc|vbr|(?<!a|j)sr|tc|cacr|dtt[0-1]|itt[0-1]|urp|dfc|sfc|usp|msp|isp|fp[0-7]', disas, re.I)
+            # NOTE: These special registers can't be interpreted as hex addresses
+            regs = re.findall('sp|pc|vbr|(?<!a|j)sr|tc|cacr|dtt[0-1]|itt[0-1]|urp|sfc|usp|msp|isp|fp[0-7]', disas, re.I)
             for reg in set(regs):
                 disas = disas.replace(reg, '%'+reg)
 
