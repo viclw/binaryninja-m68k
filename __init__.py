@@ -4077,7 +4077,10 @@ class M68040(M68030):
 
                 # BRA, BSR, Bcc
                 # Find the minimal encoding size
-                if displ >= -0x80+2 and displ <= 0x7f+2:
+                if displ == 0+2:
+                    # Reserve '0' as a special 16-bit displacement encoding
+                    size = 'w'  # word
+                elif displ >= -0x80+2 and displ <= 0x7f+2:
                     size = 's'  # small
                 elif displ >= -0x8000+2 and displ <= 0x7fff+2:
                     size = 'w'  # word
