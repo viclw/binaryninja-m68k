@@ -4385,4 +4385,4 @@ M68EC040.register()
 M68330.register()
 M68340.register()
 
-BinaryViewType['ELF'].register_arch(4, Endianness.BigEndian, Architecture['M68030'])
+BinaryViewType['ELF'].register_arch(4, Endianness.BigEndian, Architecture['M68040'])
